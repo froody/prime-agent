@@ -375,6 +375,14 @@ pub async fn create_session(mut config: SessionEngineConfig) -> anyhow::Result<S
         });
     let local_harness_dir =
         crate::refinement::get_local_harness_state_dir(session_artifact_dir.as_deref());
+    // SoL mechanisms (`sol-prime.json`/`sol-pi.json`): their archives live
+    // under the same artifact dir, so in-memory sessions archive nothing.
+    let sol = std::sync::Arc::new(crate::sol::SolSession::new(
+        &crate::sol::config::SolConfig::load(&config.agent_dir)?,
+        session_artifact_dir.as_deref(),
+        &config.agent_dir,
+        None,
+    ));
     // The refine surface gate (TS `_autoRefineAllowedForSession`): depth 0
     // with a local harness state dir — the sessions whose `refine.*` host
     // requests register, and the only sessions the compact-trigger
@@ -537,6 +545,7 @@ pub async fn create_session(mut config: SessionEngineConfig) -> anyhow::Result<S
             rlm_depth: config.rlm_depth,
             generic_mcp_servers,
             prompt_guidelines: Some(prompt_guidelines),
+            append_system_prompt: sol.system_prompt_addendum().map(str::to_string),
             ..Default::default()
         },
     );
@@ -636,16 +645,18 @@ pub async fn create_session(mut config: SessionEngineConfig) -> anyhow::Result<S
             super::messages::engine_convert_to_llm(),
         )),
         // TS wires the instrumented `transformContext` seam over the
-        // session context transform; the Rust engine wires no transform,
-        // so the instrumented seam wraps a pass-through that exists
-        // to mark the turn's dispatch moment. Always wired like TS — the
-        // wrapper's own per-request check keeps the disabled path free of
-        // timestamps and entries, and a flag flipped on mid-session still
-        // gets its dispatch timestamp.
+        // extension context transform; here the instrumented seam wraps the
+        // SoL Observation Pack projection (a pass-through when disabled),
+        // so request timing still marks the turn's dispatch moment. Always
+        // wired like TS — the wrapper's own per-request check keeps the
+        // disabled path free of timestamps and entries, and a flag flipped
+        // on mid-session still gets its dispatch timestamp.
         transform_context: Some(super::request_timing::instrument_transform_context(
             std::sync::Arc::clone(&request_timing_wiring),
-            super::request_timing::pass_through_transform(),
+            sol.wrap_transform_context(super::request_timing::pass_through_transform()),
         )),
+        // SoL Evidence-Preserving Reducer + Action Fusion counting.
+        after_tool_call: sol.after_tool_call(),
         // TS `_steeringStopPending`: both the after-turn and the
         // before-turn hooks consult the same probe (a queued steer stops
         // the run at the boundary; the pump delivers it next).
