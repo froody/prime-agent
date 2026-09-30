@@ -743,30 +743,40 @@ impl Drop for RouteHarness {
 }
 
 /// The shadow kitty-terminal decode: track the emulator-side keyboard
-/// mode stack over the child's whole byte stream. Every `CSI > flags u`
-/// pushes one entry; every `CSI < u` pops one. The operator's leak is
-/// exactly a positive depth after the exit.
+/// mode stacks over the child's whole byte stream. Every `CSI > flags u`
+/// pushes one entry; every `CSI < u` pops one. The kitty spec keeps one
+/// stack per screen (`?1049h`/`?1049l` switch between them; kitty and
+/// Herdr implement it), so a main-screen push is not undone by an
+/// alt-screen pop. The operator's leak is exactly a positive main-screen
+/// depth after the exit (the screen the shell reads keys on).
 fn kitty_stack_depth(stream: &[u8]) -> i32 {
-    let mut depth = 0i32;
+    let mut main = 0i32;
+    let mut alt = 0i32;
+    let mut on_alt = false;
     let mut at = 0;
     while let Some(hit) = find_subsequence_from(stream, at, b"\x1b[") {
         let rest = &stream[hit..];
-        if rest.starts_with(b"\x1b[>") {
+        let depth = if on_alt { &mut alt } else { &mut main };
+        if rest.starts_with(b"\x1b[?1049h") {
+            on_alt = true;
+        } else if rest.starts_with(b"\x1b[?1049l") {
+            on_alt = false;
+        } else if rest.starts_with(b"\x1b[>") {
             // A push (or the modifyOtherKeys set/reset: `>4;Nm` — not
             // a stack entry; the push form is `>Nu` / `>N;Pu`).
             if let Some(push) = kitty_push_flags(rest) {
                 let _ = push;
-                depth += 1;
+                *depth += 1;
             }
         } else if rest.starts_with(b"\x1b[<u") {
             // Kitty pops a LEVEL; a pop against an empty stack is ignored
             // (the pre-push stale-level clear and any defensive teardown
             // pop both model this way).
-            depth = (depth - 1).max(0);
+            *depth = (*depth - 1).max(0);
         }
         at = hit + 1;
     }
-    depth
+    main
 }
 
 /// `CSI > flags [;mode] u` pushes the stack (the kitty push form); the

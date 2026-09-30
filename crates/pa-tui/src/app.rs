@@ -269,7 +269,7 @@ pub(crate) fn draw(
     // mid-gap flush can never carry the clear out early over it.
     if crate::altscreen::take_first_draw_mount() {
         let mut out = std::io::stdout();
-        crate::altscreen::enter_queued(&mut out)?;
+        crate::enhanced_keys::queue_alt_screen_enter(&mut out)?;
         crossterm::queue!(
             out,
             crossterm::terminal::Clear(crossterm::terminal::ClearType::All),

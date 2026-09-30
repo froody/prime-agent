@@ -152,6 +152,11 @@ static KITTY_PROBED: AtomicBool = AtomicBool::new(false);
 /// plain thread, no runtime) holds this too, so its restore cannot
 /// interleave with a probe's enable.
 static MODE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+/// Serializes a probe-thread kitty push with the first draw's deferred
+/// alt-screen enter (see [`queue_alt_screen_enter`]). Separate from
+/// [`MODE_LOCK`]: the probe holds that one across its whole query window,
+/// and the first paint must not wait out the probe.
+static PUSH_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 /// The process is exiting and the terminal is being released for the last
 /// time (the force-quit restore): any in-flight kitty probe must stand
 /// down instead of pushing the flags back on after the restore popped
@@ -535,6 +540,28 @@ fn write_all(out: &mut Stdout, sequence: &[u8]) -> Result<()> {
     Ok(())
 }
 
+/// Queue the first draw's deferred alternate-screen enter, moving any
+/// already-pushed kitty flags onto the alternate screen. Kitty keeps one
+/// flags stack per screen (kitty, Herdr): a push made on the main screen
+/// before the enter leaves the session itself in legacy keys and
+/// survives the teardown's alt-screen pop, handing the shell CSI-u keys.
+/// TS never hits this — its enter precedes the async query answer. The
+/// pop, the enter, and the re-push queue into the caller's one flush.
+pub(crate) fn queue_alt_screen_enter(out: &mut Stdout) -> Result<()> {
+    let _push = PUSH_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let move_flags = KITTY_ACTIVE.load(Ordering::SeqCst) && !crate::altscreen::active();
+    if move_flags {
+        out.write_all(POP_KITTY_FLAGS)?;
+    }
+    crate::altscreen::enter_queued(out)?;
+    if move_flags {
+        out.write_all(ENABLE_KITTY_FLAGS)?;
+    }
+    Ok(())
+}
+
 /// Enable the kitty protocol (TS writes `\x1b[>7u` when the query answer
 /// arrives). Skipped when the surface that started the probe is already
 /// gone — a stray enable would leave the flags pushed over the next
@@ -553,6 +580,9 @@ fn enable_kitty(out: &mut Stdout) {
     if EXIT_RELEASE.load(Ordering::SeqCst) {
         return;
     }
+    let _push = PUSH_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     if !KITTY_ACTIVE.swap(true, Ordering::SeqCst) {
         // The stale-level drain (see STALE_LEVEL_DRAIN): the probe
         // answer's push drains the stale levels too.
