@@ -254,7 +254,7 @@ pub(crate) fn draw(
     let mounting = crate::altscreen::take_first_draw_mount();
     if mounting {
         let mut out = std::io::stdout();
-        crate::altscreen::enter_queued(&mut out)?;
+        crate::enhanced_keys::queue_alt_screen_enter(&mut out)?;
         crossterm::queue!(
             out,
             crossterm::terminal::Clear(crossterm::terminal::ClearType::All),

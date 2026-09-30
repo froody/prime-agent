@@ -620,28 +620,37 @@ impl Drop for RouteHarness {
     }
 }
 
-/// The shadow kitty-terminal decode: track the keyboard-mode stack over the
+/// The shadow kitty-terminal decode: track the keyboard-mode stacks over the
 /// child's whole byte stream (every `CSI > flags u` pushes, every `CSI < u`
-/// pops). The leak is exactly a positive depth after the exit.
+/// pops). The kitty spec keeps one stack per screen (`?1049h`/`?1049l`
+/// switch between them), so an alt-screen pop does not undo a main-screen
+/// push. The leak is exactly a positive main-screen depth after the exit.
 fn kitty_stack_depth(stream: &[u8]) -> i32 {
-    let mut depth = 0i32;
+    let mut main = 0i32;
+    let mut alt = 0i32;
+    let mut on_alt = false;
     let mut at = 0;
     while let Some(hit) = find_subsequence_from(stream, at, b"\x1b[") {
         let rest = &stream[hit..];
-        if rest.starts_with(b"\x1b[>") {
+        let depth = if on_alt { &mut alt } else { &mut main };
+        if rest.starts_with(b"\x1b[?1049h") {
+            on_alt = true;
+        } else if rest.starts_with(b"\x1b[?1049l") {
+            on_alt = false;
+        } else if rest.starts_with(b"\x1b[>") {
             // A push (the modifyOtherKeys set/reset `>4;Nm` is not a stack entry).
             if let Some(push) = kitty_push_flags(rest) {
                 let _ = push;
-                depth += 1;
+                *depth += 1;
             }
         } else if rest.starts_with(b"\x1b[<u") {
             // Kitty pops a LEVEL; a pop against an empty stack is ignored
             // (stale-level clears and defensive teardown pops model this way).
-            depth = (depth - 1).max(0);
+            *depth = (*depth - 1).max(0);
         }
         at = hit + 1;
     }
-    depth
+    main
 }
 
 /// `CSI > flags [;mode] u` pushes the stack; the modifyOtherKeys `>4;...m`
