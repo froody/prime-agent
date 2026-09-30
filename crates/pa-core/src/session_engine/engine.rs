@@ -395,6 +395,14 @@ pub async fn create_session(mut config: SessionEngineConfig) -> anyhow::Result<S
         });
     let local_harness_dir =
         crate::refinement::get_local_harness_state_dir(session_artifact_dir.as_deref());
+    // SoL mechanisms (`sol-prime.json`/`sol-pi.json`): their archives live
+    // under the same artifact dir, so in-memory sessions archive nothing.
+    let sol = std::sync::Arc::new(crate::sol::SolSession::new(
+        &crate::sol::config::SolConfig::load(&config.agent_dir)?,
+        session_artifact_dir.as_deref(),
+        &config.agent_dir,
+        None,
+    ));
     // The only sessions whose `refine.*` host requests register and the
     // compact-trigger auto-refine may run for.
     let auto_refine_allowed = config.rlm_depth.unwrap_or(0) == 0 && local_harness_dir.is_some();
@@ -606,7 +614,15 @@ pub async fn create_session(mut config: SessionEngineConfig) -> anyhow::Result<S
             daemonless: config.daemonless,
             can_spawn: config.rlm_subagent_host.is_some(),
             generic_mcp_servers,
-            append_system_prompt: Some(resources.append_system_prompt.join("\n\n")),
+            append_system_prompt: Some(
+                resources
+                    .append_system_prompt
+                    .iter()
+                    .map(String::as_str)
+                    .chain(sol.system_prompt_addendum())
+                    .collect::<Vec<_>>()
+                    .join("\n\n"),
+            ),
             ..Default::default()
         },
     );
@@ -725,11 +741,14 @@ pub async fn create_session(mut config: SessionEngineConfig) -> anyhow::Result<S
             super::refinement_gate::convert_to_llm(refinement_settings.reopen()),
         )),
         // The Rust engine wires no transform, so the instrumented seam
-        // wraps a pass-through that marks the turn's dispatch moment.
+        // wraps the SoL Observation Pack projection (a pass-through when
+        // disabled) and still marks the turn's dispatch moment.
         transform_context: Some(super::request_timing::instrument_transform_context(
             std::sync::Arc::clone(&request_timing_wiring),
-            super::request_timing::pass_through_transform(),
+            sol.wrap_transform_context(super::request_timing::pass_through_transform()),
         )),
+        // SoL Evidence-Preserving Reducer + Action Fusion counting.
+        after_tool_call: sol.after_tool_call(),
         should_stop_after_turn: {
             let steering = config.queued_steering_probe.take();
             let boundary = config.should_stop_after_turn.take();
