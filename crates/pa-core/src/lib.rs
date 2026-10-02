@@ -70,6 +70,7 @@ pub use tools::rlm_bootstrap::{build_rlm_bootstrap_code, PythonSkillRuntimeInfo}
 pub mod agent_traces;
 pub mod auth;
 pub mod autonomous;
+pub mod chisle;
 pub mod cron;
 pub mod export_html;
 pub mod goals;

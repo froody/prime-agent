@@ -204,6 +204,9 @@ pub struct AgentSession {
     /// summarizer completion — no deltas, no broadcast, no behavior
     /// change.
     compaction_summary_sink: std::sync::Mutex<Option<compaction_exec::SummaryDeltaSink>>,
+    /// The session's Chisle runtime (`None` until the engine wiring
+    /// installs it): its owed rule row rides every admitted turn.
+    chisle: Option<std::sync::Arc<crate::chisle::ChisleSession>>,
 }
 
 impl AgentSession {
@@ -269,6 +272,7 @@ impl AgentSession {
             skill_telemetry: None,
             image_model_router: None,
             compaction_summary_sink: std::sync::Mutex::new(None),
+            chisle: None,
         };
         this.ensure_harness_digest_context().await?;
         Ok(this)

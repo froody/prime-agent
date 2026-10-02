@@ -208,6 +208,7 @@ pub async fn execute_session_command(
         "refine" => execute_refine(engine, params, command, &mut execution).await,
         "goal" => execute_goal(engine, command, &mut execution).await,
         "autonomous" => execute_autonomous(params, command, &mut execution),
+        "chisle" => execute_chisle(engine, command, &mut execution).await,
         other => Err(format!("Unknown session command: {other}")),
     };
     if let Err(message) = result {
@@ -452,6 +453,45 @@ fn execute_autonomous(
         content: pa_types::ai::UserContent::Text(format_autonomous_status(&status)),
         display: true,
         details: serde_json::to_value(&status).ok(),
+        timestamp: now_millis(),
+        rest: serde_json::Map::default(),
+    });
+    Ok(())
+}
+
+/// `/chisle`: toggle, report, or schedule a one-shot audit/review turn
+/// (its instruction is the hidden continuation row the turn runs on).
+async fn execute_chisle(
+    engine: &SessionEngine,
+    command: &SessionSlashCommand,
+    execution: &mut SessionCommandExecution,
+) -> Result<(), String> {
+    let chisle = engine
+        .session
+        .chisle()
+        .ok_or_else(|| "Chisle is unavailable in this session".to_string())?;
+    let reply = crate::chisle::command::run(chisle, &command.args)?;
+    if let Some((custom_type, data)) = reply.mode_entry {
+        let session = engine.session.session_handle().clone();
+        let mut session = session.lock().await;
+        session
+            .append_custom_entry(custom_type, Some(data))
+            .and_then(|_| session.flush_now())
+            .map_err(|error| error.to_string())?;
+    }
+    execution.push_message(slash_command_result(
+        command,
+        reply.status,
+        true,
+        "info",
+        None,
+        true,
+    ));
+    execution.continuation_message = reply.task.map(|task| CustomMessage {
+        custom_type: crate::chisle::TASK_CUSTOM_TYPE.to_string(),
+        content: pa_types::ai::UserContent::Text(task),
+        display: false,
+        details: None,
         timestamp: now_millis(),
         rest: serde_json::Map::default(),
     });

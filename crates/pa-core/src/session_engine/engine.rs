@@ -383,6 +383,16 @@ pub async fn create_session(mut config: SessionEngineConfig) -> anyhow::Result<S
         &config.agent_dir,
         None,
     ));
+    // Chisle (`chisle.json`): the restored mode entry wins over the
+    // configured default; spill copies live under the artifact dir.
+    let chisle = {
+        let session = wiring.session.lock().await;
+        std::sync::Arc::new(crate::chisle::ChisleSession::new(
+            crate::chisle::ChisleConfig::load(&config.agent_dir)?,
+            &session.get_branch(None),
+            session_artifact_dir.as_deref(),
+        ))
+    };
     // The refine surface gate (TS `_autoRefineAllowedForSession`): depth 0
     // with a local harness state dir — the sessions whose `refine.*` host
     // requests register, and the only sessions the compact-trigger
@@ -655,8 +665,9 @@ pub async fn create_session(mut config: SessionEngineConfig) -> anyhow::Result<S
             std::sync::Arc::clone(&request_timing_wiring),
             sol.wrap_transform_context(super::request_timing::pass_through_transform()),
         )),
-        // SoL Evidence-Preserving Reducer + Action Fusion counting.
-        after_tool_call: sol.after_tool_call(),
+        // SoL Evidence-Preserving Reducer + Action Fusion counting, then
+        // Chisle tool-output compression over what they left.
+        after_tool_call: chisle.wrap_after_tool_call(sol.after_tool_call()),
         // TS `_steeringStopPending`: both the after-turn and the
         // before-turn hooks consult the same probe (a queued steer stops
         // the run at the boundary; the pump delivers it next).
@@ -728,6 +739,7 @@ pub async fn create_session(mut config: SessionEngineConfig) -> anyhow::Result<S
     // reads the resource loader at expansion time; the session snapshots
     // the engine's loaded list).
     session.set_skills(resources.skills.clone());
+    session.set_chisle(chisle);
     // The embedding's image-model routing seam (the headless surfaces
     // install theirs; the daemon worker's turn dispatch owns routing).
     session.set_image_model_router(config.image_model_router.clone());
