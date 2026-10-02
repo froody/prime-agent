@@ -708,6 +708,7 @@ pub async fn create_session(mut config: SessionEngineConfig) -> anyhow::Result<S
         keep_recent_tokens: compaction_settings
             .keep_recent_tokens
             .unwrap_or(crate::session_engine::compaction::DEFAULT_KEEP_RECENT_TOKENS),
+        max_context_tokens: compaction_settings.max_context_tokens,
     });
     // TS #2411: the session's summarizer passes (compaction summaries;
     // branch summaries route through the same context at the daemon seam)

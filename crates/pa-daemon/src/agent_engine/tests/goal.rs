@@ -172,7 +172,7 @@ fn recovered_engine_compaction_walk_sees_the_durable_history() {
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
     let dir = tempfile::TempDir::new().unwrap();
-    write_compaction_settings(dir.path(), 1);
+    write_compaction_settings(dir.path(), &reserve_settings(1));
     // The durable store a killed worker leaves behind: a long
     // conversation the fresh engine never saw in memory.
     let long = "x".repeat(48_000);

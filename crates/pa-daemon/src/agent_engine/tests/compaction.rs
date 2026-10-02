@@ -545,6 +545,71 @@ fn threshold_compaction_counts_into_the_run_telemetry() {
     assert_eq!(ended[0]["compaction_count"], serde_json::json!(1));
 }
 
+/// `compaction.maxContextTokens`: a soft cap far below the window fires
+/// the threshold compaction under the default reserve (which alone would
+/// wait for ~95k on the 128k window), and reports its adoption.
+#[test]
+fn soft_context_cap_compacts_below_the_window_threshold() {
+    let _faux = FAUX_TEST_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let (probe, _probe_dir) = faux_engine_with_settings(
+        &serde_json::json!({ "responses": [{"text": "seed reply"}] }),
+        1,
+    );
+    let mut probe_events: Vec<EngineEvent> = Vec::new();
+    admit(&probe, "seed turn".to_string(), &mut probe_events);
+    let baseline = probe_events
+        .iter()
+        .find_map(|event| match event {
+            EngineEvent::AssistantMessage(message) => message["usage"]["totalTokens"].as_u64(),
+            _ => None,
+        })
+        .expect("probe turn produced usage");
+    drop(probe);
+
+    let big_prompt = format!("seed turn {} crossing", "x".repeat(48_000));
+    let big_tokens = (48_000 + "seed turn  crossing".len() as u64).div_ceil(4);
+    // The soft threshold (cap minus its buffer) lands between the two
+    // turns' usage: the buffer grows by at most a tenth of the extra cap.
+    let target = baseline + big_tokens / 2;
+    let cap = target + pa_core::session_engine::compaction::soft_limit_buffer(target);
+    let (engine, dir) = faux_engine_with_compaction(
+        &serde_json::json!({
+            "responses": [
+                {"text": "seed reply"},
+                {"text": "crossing reply"},
+                {"text": "the summary"},
+            ],
+        }),
+        &serde_json::json!({ "maxContextTokens": cap, "keepRecentTokens": 10 }),
+    );
+    let mut events: Vec<EngineEvent> = Vec::new();
+    admit(&engine, "seed turn".to_string(), &mut events);
+    assert!(
+        !events
+            .iter()
+            .any(|event| matches!(event, EngineEvent::CompactionStart { .. })),
+        "no compaction below the soft threshold"
+    );
+    admit(&engine, big_prompt, &mut events);
+    assert!(
+        events.iter().any(|event| matches!(
+            event,
+            EngineEvent::Compaction { event, .. } if event["reason"] == "threshold"
+        )),
+        "the crossing turn compacted under the soft cap"
+    );
+    let features = mirror_telemetry_properties(&engine, dir.path(), "agent feature outcome");
+    assert!(
+        features
+            .iter()
+            .any(|properties| properties["feature_name"] == "max_context"
+                && properties["outcome"] == "completed"),
+        "the soft-cap compaction reports its adoption: {features:?}"
+    );
+}
+
 /// The requested arm feeds the same seam: the boundary compaction the
 /// kernel's `compact.run` scheduled counts into the open run.
 #[test]

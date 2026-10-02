@@ -99,6 +99,7 @@ pub struct CompactionSettings {
     pub enabled: Option<bool>,
     pub reserve_tokens: Option<u64>,
     pub keep_recent_tokens: Option<u64>,
+    pub max_context_tokens: Option<u64>,
     pub agent_callable: Option<bool>,
 }
 

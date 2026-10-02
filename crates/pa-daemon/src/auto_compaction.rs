@@ -169,11 +169,20 @@ impl AgentSessionEngine {
                 // every completed compaction into the active run).
                 {
                     let guard = self.session.blocking_lock();
-                    if let Some(telemetry) = guard
-                        .as_deref()
-                        .and_then(|engine| engine.telemetry.as_ref())
-                    {
-                        telemetry.note_compaction(Some(run.duration_ms));
+                    if let Some(engine) = guard.as_deref() {
+                        if let Some(telemetry) = engine.telemetry.as_ref() {
+                            telemetry.note_compaction(Some(run.duration_ms));
+                            // `compaction.maxContextTokens` adoption: a
+                            // threshold compaction under a configured cap.
+                            if engine
+                                .session
+                                .compaction_settings()
+                                .max_context_tokens
+                                .is_some()
+                            {
+                                telemetry.note_feature_outcome("max_context", "completed", None);
+                            }
+                        }
                     }
                 }
                 // TS `_scheduleAutoRefineAfterCompaction`: the compaction
