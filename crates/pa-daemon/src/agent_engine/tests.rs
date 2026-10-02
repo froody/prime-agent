@@ -45,18 +45,24 @@ fn bare_engine(dir: &std::path::Path) -> AgentSessionEngine {
 }
 
 /// A settings.json with an explicit compaction reserve (the f14 battery shape).
+fn reserve_settings(reserve_tokens: u64) -> serde_json::Value {
+    serde_json::json!({ "enabled": true, "reserveTokens": reserve_tokens, "keepRecentTokens": 10 })
+}
+
 pub(crate) fn write_compaction_settings(dir: &std::path::Path, reserve_tokens: u64) {
+    write_compaction_settings_block(dir, &reserve_settings(reserve_tokens));
+}
+
+/// Write `compaction` as the settings.json compaction block.
+fn write_compaction_settings_block(dir: &std::path::Path, compaction: &serde_json::Value) {
     std::fs::create_dir_all(dir.join("agent")).unwrap();
     std::fs::write(
         dir.join("agent").join("settings.json"),
-        serde_json::json!({ "compaction": { "enabled": true, "reserveTokens": reserve_tokens, "keepRecentTokens": 10 } })
-            .to_string(),
+        serde_json::json!({ "compaction": compaction }).to_string(),
     )
     .unwrap();
 }
 
-/// One faux-driven engine over its own tempdir (settings written before
-/// the first prompt so the session build resolves them).
 /// Turns the repo's `cargo test` telemetry opt-out (`DO_NOT_TRACK=1` in
 /// `.cargo/config.toml`) back off for one test that asserts telemetry
 /// wiring, restoring it on drop. Debug builds have no network sink, so the
@@ -90,12 +96,22 @@ impl Drop for TelemetryOptIn {
     }
 }
 
+/// One faux-driven engine with an explicit compaction reserve.
 pub(crate) fn faux_engine_with_settings(
     script: &serde_json::Value,
     reserve_tokens: u64,
 ) -> (std::sync::Arc<AgentSessionEngine>, tempfile::TempDir) {
+    faux_engine_with_compaction(script, &reserve_settings(reserve_tokens))
+}
+
+/// One faux-driven engine over its own tempdir (the `compaction` settings
+/// written before the first prompt so the session build resolves them).
+pub(crate) fn faux_engine_with_compaction(
+    script: &serde_json::Value,
+    compaction: &serde_json::Value,
+) -> (std::sync::Arc<AgentSessionEngine>, tempfile::TempDir) {
     let dir = tempfile::TempDir::new().unwrap();
-    write_compaction_settings(dir.path(), reserve_tokens);
+    write_compaction_settings_block(dir.path(), compaction);
     let engine = AgentSessionEngine::new(AgentEngineConfig {
         cwd: dir.path().to_path_buf(),
         agent_dir: dir.path().join("agent"),

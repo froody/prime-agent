@@ -260,8 +260,18 @@ pub const AUTH_CATEGORIES: &[&str] = &[
 ];
 
 pub const FEATURE_NAMES: &[&str] = &[
-    "model", "login", "logout", "effort", "goal", "new", "resume", "fork", "clone", "tree",
+    "model",
+    "login",
+    "logout",
+    "effort",
+    "goal",
+    "new",
+    "resume",
+    "fork",
+    "clone",
+    "tree",
     "feedback",
+    "max_context",
 ];
 
 pub const FEATURE_OUTCOMES: &[&str] = &[
@@ -749,6 +759,11 @@ const AGENT_SESSION_ENDED: EventRule = EventRule {
         ("feature_feedback_failed_count", optional(count())),
         ("feature_feedback_canceled_count", optional(count())),
         ("feature_feedback_unavailable_count", optional(count())),
+        ("feature_max_context_initiated_count", optional(count())),
+        ("feature_max_context_completed_count", optional(count())),
+        ("feature_max_context_failed_count", optional(count())),
+        ("feature_max_context_canceled_count", optional(count())),
+        ("feature_max_context_unavailable_count", optional(count())),
     ],
 };
 
@@ -1086,6 +1101,11 @@ const TUI_EXIT: EventRule = EventRule {
         ("feature_feedback_failed_count", optional(count())),
         ("feature_feedback_canceled_count", optional(count())),
         ("feature_feedback_unavailable_count", optional(count())),
+        ("feature_max_context_initiated_count", optional(count())),
+        ("feature_max_context_completed_count", optional(count())),
+        ("feature_max_context_failed_count", optional(count())),
+        ("feature_max_context_canceled_count", optional(count())),
+        ("feature_max_context_unavailable_count", optional(count())),
         ("input_received_count", optional(count())),
         ("input_queued_count", optional(count())),
         ("input_preparation_count", optional(count())),

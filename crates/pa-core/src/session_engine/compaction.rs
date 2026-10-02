@@ -31,6 +31,10 @@ pub struct CompactionSettings {
     /// `input + requested output > contextWindow`.
     pub reserve_tokens: u64,
     pub keep_recent_tokens: u64,
+    /// Soft context cap (`compaction.maxContextTokens`): the threshold
+    /// compaction fires once the context crosses the cap minus
+    /// [`soft_limit_buffer`], regardless of the model's window.
+    pub max_context_tokens: Option<u64>,
 }
 
 impl Default for CompactionSettings {
@@ -40,6 +44,7 @@ impl Default for CompactionSettings {
             threshold_percent: DEFAULT_THRESHOLD_PERCENT,
             reserve_tokens: DEFAULT_RESERVE_TOKENS,
             keep_recent_tokens: DEFAULT_KEEP_RECENT_TOKENS,
+            max_context_tokens: None,
         }
     }
 }
@@ -156,6 +161,10 @@ fn div4(chars: u64) -> u64 {
 /// must still fit. TS checks only `contextWindow - reserveTokens`; reserving
 /// the output budget is a deliberate Rust-side fix. A non-positive threshold
 /// disables the trigger.
+///
+/// A configured soft cap (`max_context_tokens`) adds a third ceiling,
+/// `cap - soft_limit_buffer(cap)`, so the context stays near the cap on
+/// windows far larger than it.
 #[must_use]
 pub fn compaction_threshold(
     context_window: u64,
@@ -180,7 +189,17 @@ pub fn compaction_threshold(
     let combined = context_window
         .saturating_sub(max_output_tokens)
         .saturating_sub(headroom);
-    percentage.min(combined)
+    let soft = settings
+        .max_context_tokens
+        .map_or(u64::MAX, |cap| cap - soft_limit_buffer(cap));
+    percentage.min(combined).min(soft)
+}
+
+/// The headroom kept under a soft context cap: 10% of the cap, clamped to
+/// 512 to 16,384 tokens and never more than half the cap.
+#[must_use]
+pub fn soft_limit_buffer(cap: u64) -> u64 {
+    (cap / 10).clamp(512, 16_384).min(cap / 2)
 }
 
 #[must_use]
@@ -624,6 +643,24 @@ mod tests {
     }
 
     #[test]
+    fn soft_context_cap_lowers_the_threshold() {
+        let settings = CompactionSettings {
+            max_context_tokens: Some(200_000),
+            ..CompactionSettings::default()
+        };
+        // 200k cap minus the 16_384 buffer, far under the 1M window's ceilings.
+        assert_eq!(compaction_threshold(1_000_000, 32_000, &settings), 183_616);
+        // A cap above the window's own ceilings never raises them.
+        assert_eq!(
+            compaction_threshold(128_000, 0, &settings),
+            compaction_threshold(128_000, 0, &CompactionSettings::default())
+        );
+        // Small caps keep at least 512 tokens of buffer, at most half the cap.
+        assert_eq!(soft_limit_buffer(2_000), 512);
+        assert_eq!(soft_limit_buffer(600), 300);
+    }
+
+    #[test]
     fn threshold_crosses_the_reserve_headroom() {
         // 126_010 tokens on a 128k window with a 127_500 reserve leaves
         // a 500-token combined ceiling — the crossing fires.
@@ -632,6 +669,7 @@ mod tests {
             enabled: true,
             reserve_tokens: 127_500,
             keep_recent_tokens: 10,
+            max_context_tokens: None,
         };
         let messages = vec![
             user_message("f14 auto seed turn", 1),
@@ -650,6 +688,7 @@ mod tests {
             enabled: false,
             reserve_tokens: 127_500,
             keep_recent_tokens: 10,
+            max_context_tokens: None,
         };
         assert!(!threshold_compaction_due(&messages, 128_000, 0, &disabled));
         assert!(!threshold_compaction_due(&messages, 0, 0, &settings));
@@ -718,6 +757,7 @@ mod tests {
             enabled: true,
             reserve_tokens: 1,
             keep_recent_tokens: 10,
+            max_context_tokens: None,
         };
         assert_eq!(compaction_threshold(131_072, 32_768, &settings), 94_208);
         // An output budget that cannot fit any context disables the
@@ -741,6 +781,7 @@ mod tests {
             enabled: true,
             reserve_tokens: 127_500,
             keep_recent_tokens: 10,
+            max_context_tokens: None,
         };
         let messages = vec![
             compaction_summary(10),
