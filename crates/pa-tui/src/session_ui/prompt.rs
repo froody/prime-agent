@@ -647,6 +647,7 @@ impl SessionUi {
     ) -> Result<()> {
         // A new prompt settles the held bash cards into the transcript first.
         Self::flush_pending_bash(view);
+        view.scroll_to_bottom();
         if let crate::interactive::reconnect::Connection::SessionPlaneFailed(error) =
             &self.connection
         {
