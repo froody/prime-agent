@@ -95,6 +95,18 @@ impl AgentSession {
         self.skills = skills;
     }
 
+    /// Install the session's Chisle runtime (the engine wiring builds it
+    /// from `chisle.json` and the restored mode entry).
+    pub fn set_chisle(&mut self, chisle: std::sync::Arc<crate::chisle::ChisleSession>) {
+        self.chisle = Some(chisle);
+    }
+
+    /// The session's Chisle runtime, when installed.
+    #[must_use]
+    pub fn chisle(&self) -> Option<&std::sync::Arc<crate::chisle::ChisleSession>> {
+        self.chisle.as_ref()
+    }
+
     /// Bind the telemetry handle the `skill_use_count` counter counts
     /// through (the engine wiring owns the telemetry lifetime and
     /// installs it once the session telemetry is assembled).

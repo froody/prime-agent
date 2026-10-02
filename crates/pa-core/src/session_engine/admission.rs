@@ -44,6 +44,7 @@ impl AgentSession {
             prompt_messages.push(digest_row);
         }
         prompt_messages.extend(self.take_next_turn_rows().await);
+        prompt_messages.extend(self.chisle_turn_row().await);
         let custom_row = session_message_to_loop(&SessionAgentMessage::Custom(message.clone()))
             .ok_or_else(|| anyhow::anyhow!("injected custom message conversion failed"))?;
         // The dispatch-time routing fires for every dispatched turn; injected
@@ -112,6 +113,9 @@ impl AgentSession {
                 telemetry.note_skill_used();
             }
         }
+        if let Some(mode) = crate::chisle::mode::requested_mode(&normalized) {
+            self.record_chisle_mode(mode).await?;
+        }
         if busy && options.streaming_behavior.is_none() {
             anyhow::bail!(
                 "Agent is already processing. Specify streamingBehavior ('steer' or 'followUp') to queue the message."
@@ -143,6 +147,7 @@ impl AgentSession {
                 prompt_messages.push(digest_row);
             }
             prompt_messages.extend(self.take_next_turn_rows().await);
+            prompt_messages.extend(self.chisle_turn_row().await);
             prompt_messages.push(user_prompt_message(&normalized, &images));
             // Each batched action contributes its user row after the
             // primary, through the same admission normalization (TS
@@ -232,6 +237,34 @@ impl AgentSession {
             next.extend(own_rows);
         }
         self.pending_next_turn_rows = shared;
+    }
+
+    /// Set the Chisle mode and record it as a session entry, so a resumed
+    /// session restores it. A no-op without a Chisle runtime.
+    ///
+    /// # Errors
+    ///
+    /// Returns the underlying I/O error when the durable append fails.
+    pub(crate) async fn record_chisle_mode(
+        &self,
+        mode: crate::chisle::mode::Mode,
+    ) -> anyhow::Result<()> {
+        let Some(chisle) = &self.chisle else {
+            return Ok(());
+        };
+        let (custom_type, data) = chisle.set_mode(mode);
+        let mut session = self.session.lock().await;
+        session.append_custom_entry(custom_type, Some(data))?;
+        session.flush_now()?;
+        Ok(())
+    }
+
+    /// The hidden Chisle row the admitted turn owes against the live
+    /// context (the rules, or their withdrawal), if any.
+    async fn chisle_turn_row(&self) -> Option<pa_agent::types::AgentMessage> {
+        let chisle = self.chisle.as_ref()?;
+        let row = chisle.owed_row(&self.agent.state().await.messages)?;
+        session_message_to_loop(&SessionAgentMessage::Custom(row))
     }
 
     /// Drain the queued next-turn rows: the admitting turn owns them; an

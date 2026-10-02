@@ -195,6 +195,9 @@ pub struct AgentSession {
     /// their `model_usage` rows: the session file unless the host binds
     /// its durable store (the daemon worker's).
     usage_store: std::sync::Arc<dyn rlm_usage::RlmChildUsageStore>,
+    /// The session's Chisle runtime (`None` until the engine wiring
+    /// installs it): its owed rule row rides every admitted turn.
+    chisle: Option<std::sync::Arc<crate::chisle::ChisleSession>>,
 }
 
 impl AgentSession {
@@ -268,6 +271,7 @@ impl AgentSession {
             refinements_in_flight: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
             refinement_cancel: std::sync::Mutex::default(),
             usage_store,
+            chisle: None,
         };
         this.ensure_harness_digest_context().await?;
         Ok(this)

@@ -403,6 +403,16 @@ pub async fn create_session(mut config: SessionEngineConfig) -> anyhow::Result<S
         &config.agent_dir,
         None,
     ));
+    // Chisle (`chisle.json`): the restored mode entry wins over the
+    // configured default; spill copies live under the artifact dir.
+    let chisle = {
+        let session = wiring.session.lock().await;
+        std::sync::Arc::new(crate::chisle::ChisleSession::new(
+            crate::chisle::ChisleConfig::load(&config.agent_dir)?,
+            &session.get_branch(None),
+            session_artifact_dir.as_deref(),
+        ))
+    };
     // The only sessions whose `refine.*` host requests register and the
     // compact-trigger auto-refine may run for.
     let auto_refine_allowed = config.rlm_depth.unwrap_or(0) == 0 && local_harness_dir.is_some();
@@ -747,8 +757,9 @@ pub async fn create_session(mut config: SessionEngineConfig) -> anyhow::Result<S
             std::sync::Arc::clone(&request_timing_wiring),
             sol.wrap_transform_context(super::request_timing::pass_through_transform()),
         )),
-        // SoL Evidence-Preserving Reducer + Action Fusion counting.
-        after_tool_call: sol.after_tool_call(),
+        // SoL Evidence-Preserving Reducer + Action Fusion counting, then
+        // Chisle tool-output compression over what they left.
+        after_tool_call: chisle.wrap_after_tool_call(sol.after_tool_call()),
         should_stop_after_turn: {
             let steering = config.queued_steering_probe.take();
             let boundary = config.should_stop_after_turn.take();
@@ -857,6 +868,7 @@ pub async fn create_session(mut config: SessionEngineConfig) -> anyhow::Result<S
     // inventory (TS `_expandSkillCommand` expands from the loader); the
     // model-visible list only shapes the prompt, pre-import, and counts.
     session.set_skills(resources.skills.clone());
+    session.set_chisle(chisle);
     session.set_image_model_router(config.image_model_router.clone());
     // The semantic-edge handoff: the daemon's child registry and retry
     // park read the recorder; the side question keeps the pre-semantic
