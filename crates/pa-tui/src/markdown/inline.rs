@@ -180,7 +180,15 @@ fn render_inline_ctx(text: &str, style: &MarkdownStyle, in_link: bool) -> (Line,
                 }
             }
         }
-        // emphasis
+        // emphasis; marked forbids intraword `_` (a run after a letter or
+        // digit), so `snake_case_name` stays literal while `a*b*c` emphasizes.
+        if c == '_' && i > 0 && bytes[i - 1].is_alphanumeric() {
+            while i < bytes.len() && bytes[i] == '_' {
+                buf.push('_');
+                i += 1;
+            }
+            continue;
+        }
         if (c == '*' || c == '_') && i + 1 < bytes.len() {
             let is_triple = i + 2 < bytes.len() && bytes[i + 1] == c && bytes[i + 2] == c;
             if is_triple {
@@ -341,7 +349,11 @@ fn autolink_token_at(rest: &str, angle: bool) -> Option<crate::autolink::Autolin
 fn find_closing(chars: &[char], from: usize, delim: char, len: usize) -> Option<usize> {
     let mut i = from;
     while i + len <= chars.len() {
-        if (0..len).all(|k| chars[i + k] == delim) {
+        // A `_` run cannot close before a letter or digit (marked).
+        let after_run = chars[i..].iter().position(|&ch| ch != delim).map(|n| i + n);
+        let intraword_underscore =
+            delim == '_' && after_run.is_some_and(|end| chars[end].is_alphanumeric());
+        if (0..len).all(|k| chars[i + k] == delim) && !intraword_underscore {
             return Some(i);
         }
         i += 1;

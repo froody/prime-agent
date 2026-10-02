@@ -566,6 +566,44 @@ fn inline_bold_code_link() {
 }
 
 #[test]
+fn intraword_underscores_stay_literal() {
+    let style = MarkdownStyle {
+        italic: Modifier::ITALIC,
+        ..MarkdownStyle::default()
+    };
+    let texts = |text: &str| -> Vec<(String, bool)> {
+        render_inline(text, &style)
+            .iter()
+            .map(|s| {
+                (
+                    s.content.clone(),
+                    s.style.add_modifier.contains(style.italic),
+                )
+            })
+            .collect()
+    };
+    let path = "client/lib/src/model/clearance/clearance_measure_calculations.dart";
+    assert_eq!(texts(path), vec![(path.to_string(), false)]);
+    assert_eq!(texts("a__b__c"), vec![("a__b__c".to_string(), false)]);
+    assert_eq!(
+        texts("x _y_z_ w"),
+        vec![
+            ("x ".to_string(), false),
+            ("y_z".to_string(), true),
+            (" w".to_string(), false)
+        ]
+    );
+    assert_eq!(
+        texts("a*b*c"),
+        vec![
+            ("a".to_string(), false),
+            ("b".to_string(), true),
+            ("c".to_string(), false)
+        ]
+    );
+}
+
+#[test]
 fn legacy_link_row_is_underlined_and_shows_the_url() {
     crate::hyperlinks::set_hyperlinks_override(Some(false));
     let style = MarkdownStyle::default();
