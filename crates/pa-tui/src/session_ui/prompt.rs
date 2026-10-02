@@ -737,6 +737,7 @@ impl SessionUi {
         // first (TS `onSubmit` flushes `pendingBashComponents` before the
         // prompt travels).
         Self::flush_pending_bash(view);
+        view.scroll_to_bottom();
         if let Some(error) = self.reconnection_failed.clone() {
             // The re-attach window expired (TS terminal close): the session
             // connection is closed, so nothing dispatches. The error row

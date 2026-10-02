@@ -516,6 +516,7 @@ fn a_window_ending_exactly_at_the_tail_shows_no_hint() {
         0,
         "the window sits exactly at the bottom"
     );
+    assert!(v.is_following(), "reaching the tail resumed following");
     assert!(
         !frame.iter().any(|l| row_text(l).contains("to follow")),
         "the at-the-bottom window carries no follow hint (following \
@@ -540,6 +541,41 @@ fn collapse_keeps_the_hint_when_rows_remain_below() {
             .iter()
             .any(|l| row_text(l).contains("ctrl+shift+down to follow")),
         "the paused window with rows below keeps the hint"
+    );
+}
+
+#[test]
+fn scroll_to_bottom_resumes_following_after_append() {
+    let mut v = filled(view(), 10);
+    v.render_frame(80, 24);
+    assert!(v.is_following());
+    v.scroll_by(-5);
+    assert!(!v.is_following());
+    v.push(TranscriptItem::UserMessage {
+        text: "new user prompt".to_string(),
+    });
+    assert!(!v.is_following());
+    v.scroll_to_bottom();
+    assert!(v.is_following());
+    let frame = v.render_frame(80, 24);
+    assert!(v.is_following());
+    assert!(frame
+        .iter()
+        .any(|l| row_text(l).contains("new user prompt")));
+}
+
+#[test]
+fn render_resumes_following_when_sparse_window_walks_to_tail() {
+    let mut v = filled(view(), 10);
+    v.render_frame(80, 24);
+    assert!(v.is_following());
+    v.scroll_by(-2);
+    assert!(!v.is_following());
+    v.scroll_by(2);
+    v.render_frame(80, 24);
+    assert!(
+        v.is_following(),
+        "scrolling back to bottom and rendering resumes following"
     );
 }
 

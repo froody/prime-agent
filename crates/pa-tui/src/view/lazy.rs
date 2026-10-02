@@ -349,13 +349,9 @@ impl AgentView {
             }
         }
         self.prepare_layout(width);
-        // The mode exit's follow-state recompute (operator directive
-        // 2026-09-26): a detail change rides the same walked window, and
-        // the first composition after it re-derives the follow state
-        // from the post-transition geometry below — a paused window
-        // whose re-walked rows still reach the transcript tail is at
-        // the bottom, not paused above new content.
-        let detail_transition = window.detail != self.detail;
+        // A walked window whose rows reach the transcript tail is at
+        // the bottom, not paused above new content: reaching the tail
+        // resumes following.
         window.detail = self.detail;
         window.width = width;
         let mut touched = Vec::new();
@@ -526,13 +522,11 @@ impl AgentView {
         window.visible_rows = rows.len();
         self.sparse_window = Some(window);
         self.window_shows_tail = shows_tail;
-        // The mode-exit follow-state recompute: a detail change whose
-        // re-walked window still reaches the tail is at the bottom —
-        // the pause distance measured in the previous mode's rows
-        // collapsed along with the layout, so the window resumes
-        // following instead of hinting at a scroll that shows nothing
-        // new (operator directive 2026-09-26).
-        if detail_transition && !self.following && shows_tail {
+        // Reaching the bottom resumes following (TS `scrollBy` /
+        // `FullscreenViewport`): a window whose walked rows reach the
+        // transcript tail is at the bottom, so resume following instead of
+        // staying paused above new content.
+        if !self.following && shows_tail {
             self.following = true;
         }
         let start = match window.anchor {
