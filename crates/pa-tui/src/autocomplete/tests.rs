@@ -980,3 +980,35 @@ fn at_index_tracks_watcher_events() {
         std::thread::sleep(std::time::Duration::from_millis(25));
     }
 }
+
+/// File completions use the TS default layout: each row carries its
+/// path inline, so same-named directories stay distinguishable, and no
+/// selected-description block renders under the list.
+#[test]
+fn file_rows_show_their_path_inline() {
+    let file_item = |path: &str| CompletionItem {
+        value: format!("@{path}/"),
+        label: "tool/".to_string(),
+        description: Some(path.to_string()),
+        argument_hint: None,
+        source_tag: None,
+    };
+    let state = AutocompleteState::new(
+        vec![file_item("tool"), file_item("lib/src/tool")],
+        5,
+        "@t".to_string(),
+        Some(SuggestionKind::File),
+    );
+    let rendered: Vec<String> = state
+        .render(&theme(), 60)
+        .iter()
+        .map(|line| line.iter().map(|span| span.content.as_str()).collect())
+        .collect();
+    assert_eq!(
+        rendered,
+        [
+            format!("\u{203a} {:<32}{:<26}", "tool/", "tool"),
+            format!("  {:<32}{:<26}", "tool/", "lib/src/tool"),
+        ]
+    );
+}
