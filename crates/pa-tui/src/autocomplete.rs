@@ -308,6 +308,12 @@ fn build_completion_value(path: &str, is_at_prefix: bool, is_quoted_prefix: bool
     format!("{prefix}\"{path}\"")
 }
 
+/// TS `SelectList` default layout: the primary column width, the gap
+/// kept after the label, and the narrowest inline description shown.
+const PRIMARY_COLUMN_WIDTH: usize = 32;
+const PRIMARY_COLUMN_GAP: usize = 2;
+const MIN_DESCRIPTION_WIDTH: usize = 10;
+
 /// Selection state for the autocomplete dropdown (port of `SelectList`).
 #[derive(Debug, Clone)]
 pub struct AutocompleteState {
@@ -393,7 +399,8 @@ impl AutocompleteState {
     /// right-aligned muted trailing), its status rows (the `(n/m)` scroll
     /// indicator, the no-match row), and the selected slash command's
     /// description block — the same grammar the `/model` picker and the
-    /// `/mcp` view render with.
+    /// `/mcp` view render with. Non-slash lists use the TS default
+    /// layout: each row's description inline, no description block.
     #[must_use]
     pub fn render(&self, theme: &crate::theme::Theme, width: usize) -> Vec<Line> {
         if self.items.is_empty() {
@@ -408,6 +415,13 @@ impl AutocompleteState {
             .saturating_sub(self.max_visible / 2)
             .min(self.items.len().saturating_sub(self.max_visible));
         let end = (start + self.max_visible).min(self.items.len());
+        // TS `createAutocompleteList`: only slash commands use the
+        // metadata layout with the selected-description block.
+        let slash_layout = match self.kind {
+            Some(SuggestionKind::SlashCommand) => true,
+            Some(SuggestionKind::File) => false,
+            None => self.prefix.starts_with('/'),
+        };
         let mut lines: Vec<Line> = Vec::new();
         for (index, item) in self.items[start..end].iter().enumerate() {
             let index = start + index;
@@ -424,12 +438,30 @@ impl AutocompleteState {
             if let Some(tag) = item.source_tag.as_deref() {
                 trailing.push(crate::menu_panel::MenuSegment::muted(tag));
             }
+            // The default layout (TS `renderItem`): the label padded
+            // to the primary column, then the muted description on the
+            // same row when it has room — `@` files with one name in
+            // several directories stay distinguishable by their paths.
+            let primary = match item.description.as_deref() {
+                Some(description)
+                    if !slash_layout
+                        && width.saturating_sub(PRIMARY_COLUMN_WIDTH + 4)
+                            > MIN_DESCRIPTION_WIDTH =>
+                {
+                    let label = crate::width::truncate_to_width(
+                        &item.label,
+                        PRIMARY_COLUMN_WIDTH - PRIMARY_COLUMN_GAP,
+                        "",
+                    );
+                    vec![
+                        Span::raw(crate::width::pad_cell(&label, PRIMARY_COLUMN_WIDTH)),
+                        theme.fg_span(crate::theme::ThemeColor::Muted, description),
+                    ]
+                }
+                _ => vec![Span::raw(item.label.clone())],
+            };
             lines.push(crate::menu_panel::menu_row(
-                theme,
-                width,
-                vec![Span::raw(item.label.clone())],
-                &trailing,
-                selected,
+                theme, width, primary, &trailing, selected,
             ));
         }
         if start > 0 || end < self.items.len() {
@@ -444,7 +476,7 @@ impl AutocompleteState {
             .items
             .get(self.selected_index)
             .and_then(|item| item.description.as_deref())
-            .filter(|d| !d.trim().is_empty())
+            .filter(|d| slash_layout && !d.trim().is_empty())
         {
             let indent = if width >= 4 { "  " } else { "" };
             let content_width = (width.saturating_sub(str_width(indent) + 2)).max(1);
