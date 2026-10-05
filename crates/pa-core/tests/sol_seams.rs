@@ -149,7 +149,7 @@ async fn a_sol_prime_config_reduces_test_logs_and_packs_large_results() {
     .unwrap();
     std::fs::write(
         agent_dir.join("sol-prime.json"),
-        json!({ "evidencePreservingReducer": true, "reducerModel": "solreducer/small-1" })
+        json!({ "evidencePreservingReducer": true, "reducerModel": "solreducer/small-1", "actionFusion": true })
             .to_string(),
     )
     .unwrap();
@@ -268,6 +268,19 @@ async fn a_sol_prime_config_reduces_test_logs_and_packs_large_results() {
             .is_ok_and(|text| text.contains("collecting ... ok") && text.contains("call-cat"))
     });
     assert!(persisted_full, "the stored tool result is never rewritten");
+    // Action Fusion classifies every ipython cell into the result details,
+    // alongside the reducer's receipt summary.
+    let details: Vec<serde_json::Value> = entries
+        .iter()
+        .filter_map(|entry| serde_json::to_value(entry).ok())
+        .filter_map(|entry| entry.pointer("/message/details").cloned())
+        .collect();
+    assert_eq!(
+        details[0]["actionFusion"],
+        json!({ "kind": "check", "fused": 0, "unfused": 0 })
+    );
+    assert!(details[0]["evidencePreservingReducer"].is_object());
+    assert_eq!(details[1]["actionFusion"]["kind"], "neither");
     let assistant_texts: Vec<String> = contexts[4]
         .messages
         .iter()

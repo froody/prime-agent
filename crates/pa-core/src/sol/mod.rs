@@ -131,32 +131,52 @@ impl SolSession {
             let session = Arc::clone(&session);
             Box::pin(async move {
                 let code = context.args.get("code").and_then(serde_json::Value::as_str);
-                if let (Some(fusion), Some(code), "ipython") =
-                    (&session.fusion, code, context.tool_call.name.as_str())
+                let fusion_receipt = match (&session.fusion, code, context.tool_call.name.as_str())
                 {
-                    let mut counts = fusion
-                        .lock()
-                        .unwrap_or_else(std::sync::PoisonError::into_inner);
-                    let kind = counts.record(code);
-                    tracing::debug!(
-                        ?kind,
-                        fused = counts.fused,
-                        split = counts.unfused,
-                        "action fusion"
-                    );
-                }
-                let Some(reducer) = &session.reducer else {
-                    return Ok(None);
+                    (Some(fusion), Some(code), "ipython") => {
+                        let mut counts = fusion
+                            .lock()
+                            .unwrap_or_else(std::sync::PoisonError::into_inner);
+                        let kind = counts.record(code);
+                        Some(serde_json::json!({
+                            "kind": kind.as_str(),
+                            "fused": counts.fused,
+                            "unfused": counts.unfused,
+                        }))
+                    }
+                    _ => None,
                 };
-                Ok(reducer
-                    .reduce(ToolCallOutcome {
-                        tool_name: &context.tool_call.name,
-                        args: &context.args,
-                        content: &context.result.content,
-                        details: &context.result.details,
-                        is_error: context.is_error,
-                    })
-                    .await)
+                let reduced = match &session.reducer {
+                    Some(reducer) => {
+                        reducer
+                            .reduce(ToolCallOutcome {
+                                tool_name: &context.tool_call.name,
+                                args: &context.args,
+                                content: &context.result.content,
+                                details: &context.result.details,
+                                is_error: context.is_error,
+                            })
+                            .await
+                    }
+                    None => None,
+                };
+                let Some(fusion_receipt) = fusion_receipt else {
+                    return Ok(reduced);
+                };
+                // The receipt rides the result details so the JSON event
+                // stream shows each cell's classification (sol-pi parity).
+                let mut result = reduced.unwrap_or_default();
+                let mut details = match result
+                    .details
+                    .take()
+                    .unwrap_or_else(|| context.result.details.clone())
+                {
+                    serde_json::Value::Object(fields) => fields,
+                    _ => serde_json::Map::new(),
+                };
+                details.insert("actionFusion".to_string(), fusion_receipt);
+                result.details = Some(serde_json::Value::Object(details));
+                Ok(Some(result))
             })
         }))
     }
