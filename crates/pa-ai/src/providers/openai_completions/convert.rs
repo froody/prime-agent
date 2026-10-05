@@ -423,10 +423,10 @@ pub(crate) fn parse_chunk_usage(
     // Normalize to the provider-layer usage accounting semantics:
     // - cacheRead: hits from cache created by previous requests only
     // - cacheWrite: tokens written to cache in this request
-    // Some OpenAI-compatible providers (observed on OpenRouter) report
-    // cached_tokens as (previous hits + current writes). Remove cacheWrite from
-    // cacheRead in that case.
-    let cache_read_tokens = if cache_write_tokens > 0 {
+    // OpenRouter reports cached_tokens as (previous hits + current writes), so
+    // cacheWrite is removed from cacheRead there. Other endpoints (LiteLLM,
+    // Bedrock-backed proxies) already report previous hits only.
+    let cache_read_tokens = if model.provider == "openrouter" && cache_write_tokens > 0 {
         reported_cached_tokens.saturating_sub(cache_write_tokens)
     } else {
         reported_cached_tokens
@@ -626,6 +626,35 @@ mod tests {
         assert!((usage.cost.output.as_f64() - 0.03).abs() < 1e-9);
         assert!((usage.cost.cache_read.as_f64() - 0.0).abs() < 1e-9);
         assert!((usage.cost.total.as_f64() - 0.15).abs() < 1e-9);
+    }
+
+    #[test]
+    fn cache_write_tokens_stay_out_of_cache_read_outside_openrouter() {
+        // LiteLLM -> Bedrock: cached_tokens counts previous hits only.
+        let raw = json!({
+            "prompt_tokens": 31_163,
+            "completion_tokens": 243,
+            "prompt_tokens_details": {"cached_tokens": 28_082, "cache_write_tokens": 3_079},
+        });
+        let usage = parse_chunk_usage(&raw, &model("litellm", 0.0, 0.0), None);
+        assert_eq!(
+            (usage.input, usage.cache_read, usage.cache_write),
+            (2, 28_082, 3_079)
+        );
+    }
+
+    #[test]
+    fn openrouter_cached_tokens_include_current_cache_writes() {
+        let raw = json!({
+            "prompt_tokens": 31_163,
+            "completion_tokens": 243,
+            "prompt_tokens_details": {"cached_tokens": 31_161, "cache_write_tokens": 3_079},
+        });
+        let usage = parse_chunk_usage(&raw, &model("openrouter", 0.0, 0.0), None);
+        assert_eq!(
+            (usage.input, usage.cache_read, usage.cache_write),
+            (2, 28_082, 3_079)
+        );
     }
 
     #[test]
