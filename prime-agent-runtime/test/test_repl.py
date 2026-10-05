@@ -21,7 +21,7 @@ _EOF = object()
 class ReplProcess:
     """Drives one `python -m rlm.repl` subprocess over the JSON-lines protocol."""
 
-    def __init__(self, env: dict[str, str] | None = None) -> None:
+    def __init__(self, env: dict[str, str] | None = None, cwd: str | None = None) -> None:
         env = {
             **os.environ,
             "PYTHONPATH": SRC + os.pathsep + os.environ.get("PYTHONPATH", ""),
@@ -35,6 +35,7 @@ class ReplProcess:
             stderr=subprocess.DEVNULL,
             text=True,
             env=env,
+            cwd=cwd,
         )
         self.raw_lines: list[str] = []
         self._lines: queue.Queue[object] = queue.Queue()
@@ -1848,6 +1849,24 @@ class ReplTest(unittest.TestCase):
             self.assertEqual(done["failed"], [])
             self.assertEqual(done["reason"], "snapshot not found")
 
+
+class OpenedPathsTest(unittest.TestCase):
+    def test_done_reports_files_the_cell_opened_below_cwd_only_when_enabled(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            target = os.path.join(os.path.realpath(tmp), "a.txt")
+            with open(target, "w") as fh:
+                fh.write("x")
+            code = f"import json\nfrom pathlib import Path\nPath({target!r}).read_text()"
+            tracked = ReplProcess(env={"PRIME_AGENT_TRACK_FILE_OPENS": "1"}, cwd=os.path.dirname(target))
+            self.addCleanup(tracked.close)
+            tracked.ready()
+            self.assertEqual(one(tracked.execute("a", code), "done")["opened"], [target])
+            self.assertNotIn("opened", one(tracked.execute("b", "1"), "done"))
+
+            untracked = ReplProcess(cwd=os.path.dirname(target))
+            self.addCleanup(untracked.close)
+            untracked.ready()
+            self.assertNotIn("opened", one(untracked.execute("c", code), "done"))
 
 class FinishRequestTest(unittest.TestCase):
     """In-process checks of the parked-interrupt bookkeeping on request finish."""

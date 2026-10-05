@@ -494,6 +494,7 @@ pub const FEATURE_NAMES: &[&str] = &[
     "tree",
     "feedback",
     "max_context",
+    "context_search",
 ];
 
 /// The #2117 feature outcomes.

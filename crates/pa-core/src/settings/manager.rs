@@ -938,6 +938,11 @@ impl SettingsManager {
     /// `requestTiming`: unset means OFF — the per-request timing timeline
     /// is opt-in, exactly the TS default (`getRequestTiming`).
     #[must_use]
+    pub fn get_context_search_policy(&self) -> super::ContextSearchPolicy {
+        self.merged.context_search_policy.unwrap_or_default()
+    }
+
+    #[must_use]
     pub fn get_request_timing(&self) -> bool {
         self.merged.request_timing.unwrap_or(false)
     }

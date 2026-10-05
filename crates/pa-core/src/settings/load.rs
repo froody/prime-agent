@@ -58,6 +58,7 @@ const KNOWN_FIELDS: &[&str] = &[
     "markdown",
     "warnings",
     "sessionDir",
+    "contextSearchPolicy",
     "requestTiming",
 ];
 

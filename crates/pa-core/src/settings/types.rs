@@ -12,6 +12,20 @@ pub enum MermaidRenderingMode {
     Streaming,
 }
 
+/// Where project context (AGENTS.md/CLAUDE.md and rules) is discovered.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ContextSearchPolicy {
+    /// The global AGENTS.md plus the cwd ancestor chain.
+    #[default]
+    Default,
+    /// Claude Code's discovery: `Default` plus the `.claude/rules` and
+    /// `.agents/rules` directories of every ancestor, and on demand the
+    /// subtree AGENTS.md/CLAUDE.md files and path-scoped rules covering the
+    /// files the agent opens or edits below cwd.
+    Claude,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum UpdateChannel {
@@ -378,6 +392,8 @@ pub struct Settings {
     /// Log per-request provider timing phases to the diagnostic log (TS
     /// `requestTiming`; unset means OFF, exactly the TS default).
     pub request_timing: Option<bool>,
+    /// Rust-only `contextSearchPolicy`; unset is [`ContextSearchPolicy::Default`].
+    pub context_search_policy: Option<ContextSearchPolicy>,
     /// Unknown keys survive load/save round-trips (forward compatibility).
     #[serde(flatten, skip_serializing_if = "serde_json::Map::is_empty")]
     pub extra: serde_json::Map<String, serde_json::Value>,

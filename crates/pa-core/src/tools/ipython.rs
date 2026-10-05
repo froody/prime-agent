@@ -65,6 +65,7 @@ pub struct ExecuteResult {
     /// Agent messages sent from this cell, in order (TS
     /// `sentAgentMessages` on the tool-result details).
     pub sent_agent_messages: Vec<crate::kernel::shared::KernelSentAgentMessage>,
+    pub opened_paths: Vec<String>,
 }
 
 /// The wire form of one sent agent message (TS `KernelSentAgentMessage`):
@@ -475,6 +476,10 @@ pub async fn execute_ipython(
             .iter()
             .map(sent_agent_message_json)
             .collect::<Vec<_>>());
+    }
+
+    if !r.opened_paths.is_empty() {
+        details["openedPaths"] = json!(r.opened_paths);
     }
 
     Ok(ToolExecutionResult {

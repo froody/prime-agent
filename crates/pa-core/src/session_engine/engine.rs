@@ -258,6 +258,7 @@ pub async fn create_session(mut config: SessionEngineConfig) -> anyhow::Result<S
     // compaction scheduling budget (`compact.run` prepare check) and the
     // auto-refine gates (TS `getAutoRefineSettings`).
     let compaction_settings = settings.settings().compaction.clone().unwrap_or_default();
+    let context_search_policy = settings.get_context_search_policy();
     let auto_refine_gates =
         super::refine::AutoRefineGates::from_settings(settings.settings().auto_refine.as_ref());
     // Request timing (TS #2462): the settings half of the flag is read once
@@ -491,6 +492,7 @@ pub async fn create_session(mut config: SessionEngineConfig) -> anyhow::Result<S
         config.on_background_work_settled.clone(),
         on_unavailable_skills,
         on_bootstrap_result,
+        context_search_policy,
     );
     let mut tools = config.tools.clone();
     if !tools.iter().any(|tool| tool.name() == "ipython") {
@@ -671,7 +673,14 @@ pub async fn create_session(mut config: SessionEngineConfig) -> anyhow::Result<S
         )),
         // SoL Evidence-Preserving Reducer + Action Fusion counting, then
         // Chisle tool-output compression over what they left.
-        after_tool_call: chisle.wrap_after_tool_call(sol.after_tool_call()),
+        // On-demand project context last, so compression never elides it.
+        after_tool_call: {
+            let inner = chisle.wrap_after_tool_call(sol.after_tool_call());
+            match &resources.context_search {
+                Some(search) => Some(search.wrap_after_tool_call(inner)),
+                None => inner,
+            }
+        },
         // TS `_steeringStopPending`: both the after-turn and the
         // before-turn hooks consult the same probe (a queued steer stops
         // the run at the boundary; the pump delivers it next).
@@ -821,6 +830,9 @@ pub async fn create_session(mut config: SessionEngineConfig) -> anyhow::Result<S
     // telemetry handle (installed once the telemetry composition decided
     // whether this session reports at all).
     if let Some(telemetry) = telemetry.as_ref() {
+        if resources.context_search.is_some() {
+            telemetry.note_feature_outcome("context_search", "initiated", None);
+        }
         session.set_skill_telemetry(telemetry.clone());
         // Same lifetime for the `rlm child usage attributed` adoption
         // event: the producer's flush reports through this handle.

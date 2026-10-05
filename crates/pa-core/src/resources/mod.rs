@@ -69,6 +69,7 @@ pub fn load_project_context_files(cwd: &Path, agent_dir: &Path) -> Vec<ContextFi
     context_files
 }
 
+pub mod context_search;
 // Session resource resolution (package-manager `resolve()`) feeds the
 // loader below.
 pub(crate) mod resolution;
@@ -76,7 +77,7 @@ pub(crate) mod resolution;
 use anyhow::Result;
 
 use crate::packages::BundledSkillsDir;
-use crate::settings::SettingsManager;
+use crate::settings::{ContextSearchPolicy, SettingsManager};
 
 /// Loaded resources for a session.
 #[derive(Debug, Default)]
@@ -85,6 +86,8 @@ pub struct LoadedResources {
     pub skill_diagnostics: Vec<ResourceDiagnostic>,
     pub prompts: Vec<PromptTemplate>,
     pub agents_files: Vec<ContextFile>,
+    /// On-demand context discovery (`contextSearchPolicy: "claude"`).
+    pub context_search: Option<std::sync::Arc<context_search::ContextSearch>>,
     pub system_prompt: Option<String>,
     pub append_system_prompt: Vec<String>,
 }
@@ -134,6 +137,7 @@ pub fn load_resources(mut options: ResourceLoaderOptions) -> Result<LoadedResour
         .settings
         .take()
         .unwrap_or_else(|| SettingsManager::create(&options.cwd, &options.agent_dir));
+    let context_search_policy = settings.get_context_search_policy();
     let resolution = resolution::resolve_session_resources(&options, settings)?;
 
     let mut resources = LoadedResources::default();
@@ -219,6 +223,14 @@ pub fn load_resources(mut options: ResourceLoaderOptions) -> Result<LoadedResour
     // Agents files (project context).
     if !options.no_context_files {
         resources.agents_files = load_project_context_files(&options.cwd, &options.agent_dir);
+        match context_search_policy {
+            ContextSearchPolicy::Default => {}
+            ContextSearchPolicy::Claude => {
+                let (rules, search) = context_search::discover(&options.cwd);
+                resources.agents_files.extend(rules);
+                resources.context_search = Some(std::sync::Arc::new(search));
+            }
+        }
     }
 
     // System prompt: explicit source or discovered file content.

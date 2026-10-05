@@ -175,6 +175,8 @@ pub struct ExecuteResult {
     pub status: ExecuteStatus,
     pub error: Option<KernelError>,
     pub duration_ms: u64,
+    /// Files the cell opened (only when the kernel tracks file opens).
+    pub opened_paths: Vec<String>,
 }
 
 /// Options for one `execute` call.

@@ -140,6 +140,7 @@ impl InternalExecuteResult {
                 status: ExecuteStatus::Aborted,
                 error: None,
                 duration_ms: started.elapsed().as_millis() as u64,
+                opened_paths: Vec::new(),
             },
             done_fields: None,
         }

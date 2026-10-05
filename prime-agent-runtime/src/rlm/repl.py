@@ -645,6 +645,7 @@ async def _handle_execute(req: dict[str, Any], ns: dict[str, Any]) -> None:
     execution_token = _current_cell_execution.set(execution)
     try:
         codes, has_trailing = _compile_cell(req["code"], filename)
+        _opened_paths.clear()
         assert _loop is not None
         task = _loop.create_task(_run_codes(codes, ns))
         execution.owner = task
@@ -672,12 +673,35 @@ async def _handle_execute(req: dict[str, Any], ns: dict[str, Any]) -> None:
             _send({"event": "result", "id": cell_id, "text": result_text})
         if error is not None:
             _send(error)
-        _send({"event": "done", "id": cell_id, "status": status})
+        done: dict[str, Any] = {"event": "done", "id": cell_id, "status": status}
+        if _opened_paths:
+            done["opened"] = list(_opened_paths)
+        _send(done)
     finally:
         execution.owner = None
         execution.finished.set()
         _current_cell_execution.reset(execution_token)
         _current_cell.reset(cell_token)
+
+
+# Files opened by the running cell, reported on its done frame so the host can
+# attach the project context that covers them. Off unless the host asks.
+TRACK_FILE_OPENS_ENV = "PRIME_AGENT_TRACK_FILE_OPENS"
+_MAX_OPENED_PATHS = 256
+_opened_paths: dict[str, None] = {}
+# Only files below the session cwd (the kernel's start directory) count, so
+# imports from the venv cannot crowd them out.
+_opened_root = os.path.join(os.getcwd(), "")
+
+
+def _record_open(event: str, args: tuple[Any, ...]) -> None:
+    if event != "open" or len(_opened_paths) >= _MAX_OPENED_PATHS:
+        return
+    path = args[0]
+    if isinstance(path, (str, bytes, os.PathLike)):
+        path = os.path.abspath(os.fsdecode(path))
+        if path.startswith(_opened_root):
+            _opened_paths[path] = None
 
 
 def _drain_output() -> None:
@@ -1618,6 +1642,8 @@ def main() -> None:
     asyncio.set_event_loop(_loop)
     queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
     signal.signal(signal.SIGINT, _sigint_handler)
+    if os.environ.get(TRACK_FILE_OPENS_ENV) == "1":
+        sys.addaudithook(_record_open)
     threading.Thread(target=_read_requests, args=(stdin_fd, queue), daemon=True).start()
 
     _send({"event": "ready", "protocol": PROTOCOL_VERSION, "python": platform.python_version()})
