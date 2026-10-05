@@ -151,6 +151,15 @@ pub fn stream_once(
         .filter_map(json_round_trip)
         .collect();
     let tools: Vec<pa_types::ai::Tool> = context.tools.iter().filter_map(json_round_trip).collect();
+    // The layered prompt leads with the session-independent static layers;
+    // mark where they end so providers can cache them across sessions.
+    let static_prefix =
+        crate::prompts::layers::static_prefix(Some(&format!("{}/{}", model.provider, model.id)));
+    let system_prompt_cache_prefix_len = context
+        .system_prompt
+        .as_deref()
+        .filter(|prompt| prompt.starts_with(&static_prefix))
+        .map(|_| static_prefix.len());
     let ai_context = pa_types::ai::Context {
         system_prompt: context.system_prompt,
         messages,
@@ -184,6 +193,7 @@ pub fn stream_once(
             headers: headers.map(|headers| headers.into_iter().collect()),
             metadata: None,
             timeout_ms: None,
+            system_prompt_cache_prefix_len,
         },
         reasoning: Some(model_thinking_level(options.reasoning)),
         thinking_budgets: None,

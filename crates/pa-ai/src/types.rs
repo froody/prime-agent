@@ -94,6 +94,10 @@ pub struct StreamOptions {
     pub headers: Option<std::collections::HashMap<String, String>>,
     pub timeout_ms: Option<u64>,
     pub metadata: Option<std::collections::HashMap<String, serde_json::Value>>,
+    /// Byte offset into `Context::system_prompt` where its cache-stable
+    /// prefix ends. Providers that place prompt-cache breakpoints add one
+    /// there, so sessions whose prompts differ only after it share the cache.
+    pub system_prompt_cache_prefix_len: Option<usize>,
 }
 
 impl std::fmt::Debug for StreamOptions {
@@ -112,6 +116,10 @@ impl std::fmt::Debug for StreamOptions {
             .field("headers", &self.headers)
             .field("timeout_ms", &self.timeout_ms)
             .field("metadata", &self.metadata)
+            .field(
+                "system_prompt_cache_prefix_len",
+                &self.system_prompt_cache_prefix_len,
+            )
             .finish()
     }
 }

@@ -84,7 +84,11 @@ pub(crate) fn build_params(
     }
 
     if let Some(cache_control) = cache_control {
-        apply_anthropic_cache_control(&mut params, cache_control);
+        apply_anthropic_cache_control(
+            &mut params,
+            cache_control,
+            options.base.system_prompt_cache_prefix_len,
+        );
     }
 
     if let Some(tool_choice) = &options.tool_choice {
@@ -245,6 +249,7 @@ pub(crate) fn build_params(
 fn apply_anthropic_cache_control(
     params: &mut Map<String, Value>,
     cache_control: &OpenAICompatCacheControl,
+    system_prompt_cache_prefix_len: Option<usize>,
 ) {
     // Last tool.
     if let Some(tools) = params
@@ -264,11 +269,29 @@ fn apply_anthropic_cache_control(
     else {
         return;
     };
-    // System prompt.
+    // System prompt: a breakpoint at its end, plus one at the end of its
+    // cache-stable prefix when the caller marks one.
     for message in messages.iter_mut() {
         let role = message.get("role").and_then(|value| value.as_str());
         if role == Some("system") || role == Some("developer") {
-            add_cache_control_to_message(message, cache_control);
+            let split_content = system_prompt_cache_prefix_len.and_then(|at| {
+                let text = message.get("content")?.as_str()?;
+                (at > 0 && at < text.len() && text.is_char_boundary(at)).then(|| {
+                    let cache_json = cache_control.to_json();
+                    json!([
+                        { "type": "text", "text": &text[..at], "cache_control": cache_json },
+                        { "type": "text", "text": &text[at..], "cache_control": cache_json },
+                    ])
+                })
+            });
+            match split_content {
+                Some(content) => {
+                    message["content"] = content;
+                }
+                None => {
+                    add_cache_control_to_message(message, cache_control);
+                }
+            }
             break;
         }
     }
@@ -646,5 +669,27 @@ mod tests {
         // The clamped ladder stops at the map's addressable top.
         let params = reasoning_params_for(&model, ModelThinkingLevel::Max);
         assert_eq!(params.get("reasoning"), Some(&json!({ "effort": "xhigh" })));
+    }
+
+    #[test]
+    fn cache_prefix_len_splits_the_system_prompt_into_two_breakpoints() {
+        let mut params = Map::new();
+        params.insert(
+            "messages".into(),
+            json!([
+                { "role": "developer", "content": "STATIC-TAIL" },
+                { "role": "user", "content": "hi" },
+            ]),
+        );
+        let cache_control = OpenAICompatCacheControl { ttl: None };
+        apply_anthropic_cache_control(&mut params, &cache_control, Some(6));
+        let marker = cache_control.to_json();
+        assert_eq!(
+            params["messages"][0]["content"],
+            json!([
+                { "type": "text", "text": "STATIC", "cache_control": marker },
+                { "type": "text", "text": "-TAIL", "cache_control": marker },
+            ])
+        );
     }
 }
