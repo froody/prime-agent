@@ -371,6 +371,8 @@ mod tests {
                     conversation_log_path: None,
                     additional_skill_paths: Vec::new(),
                     additional_prompt_paths: Vec::new(),
+                    no_skills: false,
+                    no_context_files: false,
                     extra_builtin_skill_overrides: Vec::new(),
                     rlm_subagent_host: None,
                     rlm_depth: None,

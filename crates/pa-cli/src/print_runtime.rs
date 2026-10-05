@@ -612,6 +612,8 @@ async fn build_headless_engine_with(
                 .iter()
                 .map(|path| path.display().to_string())
                 .collect(),
+            no_skills: config.no_skills,
+            no_context_files: config.no_context_files,
             extra_builtin_skill_overrides: vec![],
             rlm_subagent_host: None,
             rlm_depth: None,
@@ -1659,6 +1661,8 @@ async fn build_faux_engine_with(
             conversation_log_path: None,
             additional_skill_paths: vec![],
             additional_prompt_paths: vec![],
+            no_skills: config.no_skills,
+            no_context_files: config.no_context_files,
             extra_builtin_skill_overrides: vec![],
             rlm_subagent_host: None,
             rlm_depth: None,

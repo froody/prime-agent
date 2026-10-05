@@ -53,6 +53,10 @@ pub struct SessionEngineConfig {
     pub additional_skill_paths: Vec<String>,
     /// Extra prompt-template paths.
     pub additional_prompt_paths: Vec<String>,
+    /// `--no-skills`: skip skill discovery (explicit skill paths still load).
+    pub no_skills: bool,
+    /// `--no-context-files`: skip AGENTS.md/CLAUDE.md discovery.
+    pub no_context_files: bool,
     /// Force-exclude patterns for built-in skills (e.g. unauthenticated
     /// integrations); the MCP manager seam.
     pub extra_builtin_skill_overrides: Vec<String>,
@@ -282,9 +286,9 @@ pub async fn create_session(mut config: SessionEngineConfig) -> anyhow::Result<S
         extra_builtin_skill_overrides,
         additional_skill_paths: config.additional_skill_paths.clone(),
         additional_prompt_paths: config.additional_prompt_paths.clone(),
-        no_skills: false,
+        no_skills: config.no_skills,
         no_prompt_templates: false,
-        no_context_files: false,
+        no_context_files: config.no_context_files,
         system_prompt: config.custom_system_prompt.clone(),
         append_system_prompt: Vec::new(),
         ..Default::default()

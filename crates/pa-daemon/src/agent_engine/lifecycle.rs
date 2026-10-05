@@ -1135,6 +1135,8 @@ impl AgentSessionEngine {
             conversation_log_path: session_file,
             additional_skill_paths: create_resources.skills,
             additional_prompt_paths: create_resources.prompt_templates,
+            no_skills: false,
+            no_context_files: false,
             extra_builtin_skill_overrides: vec![],
             rlm_subagent_host: self.children.clone().map(|children| {
                 children as Arc<dyn pa_core::session_engine::rlm_host::RlmSubagentHost>

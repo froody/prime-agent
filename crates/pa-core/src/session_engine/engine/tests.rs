@@ -76,6 +76,8 @@ async fn engine_runs_tool_loop_and_persists() {
         conversation_log_path: None,
         additional_skill_paths: vec![],
         additional_prompt_paths: vec![],
+        no_skills: false,
+        no_context_files: false,
         extra_builtin_skill_overrides: vec![],
         rlm_subagent_host: None,
         rlm_depth: None,
@@ -175,6 +177,8 @@ async fn spawned_child_prompt_stamps_its_depth() {
         conversation_log_path: None,
         additional_skill_paths: vec![],
         additional_prompt_paths: vec![],
+        no_skills: false,
+        no_context_files: false,
         extra_builtin_skill_overrides: vec![],
         rlm_subagent_host: None,
         rlm_depth: Some(2),
@@ -191,6 +195,50 @@ async fn spawned_child_prompt_stamps_its_depth() {
         .system_prompt
         .contains("Recursive agent depth: 2 (not root)"));
     assert!(!engine.system_prompt.contains("depth: 0 (root)"));
+}
+
+/// `--no-skills` / `--no-context-files` reach resource loading: project
+/// skills and AGENTS.md drop out of the system prompt.
+#[tokio::test]
+async fn no_skills_and_no_context_files_drop_them_from_the_prompt() {
+    let model = pa_agent::types::Model {
+        id: "m".into(),
+        name: "m".into(),
+        api: "test".into(),
+        provider: "test".into(),
+        base_url: "http://localhost".into(),
+        reasoning: false,
+        cost: pa_agent::types::UsageCost::default(),
+        context_window: 1_000,
+        max_tokens: 100,
+    };
+    let tmp = tempfile::tempdir().unwrap();
+    let cwd = tmp.path().join("project");
+    let skill_dir = cwd.join(".agents").join("skills").join("probe-skill");
+    std::fs::create_dir_all(&skill_dir).unwrap();
+    std::fs::write(
+        skill_dir.join("SKILL.md"),
+        "---\nname: probe-skill\ndescription: Probe skill.\n---\nBody.\n",
+    )
+    .unwrap();
+    std::fs::write(cwd.join("AGENTS.md"), "Probe project rule.").unwrap();
+    let build = |no_flags: bool| {
+        let provider = Arc::new(ScriptedProvider::new(model.clone()));
+        create_session(SessionEngineConfig {
+            cwd: cwd.clone(),
+            agent_dir: tmp.path().join("agent"),
+            model: Some(model.clone()),
+            stream_fn: Some(provider.stream_fn()),
+            tools: vec![bridge_tool(echo_definition())],
+            no_skills: no_flags,
+            no_context_files: no_flags,
+            ..Default::default()
+        })
+    };
+    let prompt = build(false).await.unwrap().system_prompt;
+    assert!(prompt.contains("probe-skill") && prompt.contains("Probe project rule."));
+    let prompt = build(true).await.unwrap().system_prompt;
+    assert!(!prompt.contains("probe-skill") && !prompt.contains("Probe project rule."));
 }
 
 /// The login chain's prompt-gating end to end at the engine level: a
@@ -241,6 +289,8 @@ async fn oauth_creds_unlock_generic_mcp_gating_in_new_sessions() {
             conversation_log_path: None,
             additional_skill_paths: vec![],
             additional_prompt_paths: vec![],
+            no_skills: false,
+            no_context_files: false,
             extra_builtin_skill_overrides: vec![],
             rlm_subagent_host: None,
             rlm_depth: None,
