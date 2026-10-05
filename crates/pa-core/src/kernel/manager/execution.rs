@@ -204,6 +204,15 @@ impl Inner {
                 );
             }
             let done_fields = buffers.done_fields.take();
+            let opened_paths = done_fields
+                .as_ref()
+                .and_then(|fields| fields.get("opened"))
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .filter_map(Value::as_str)
+                .map(str::to_string)
+                .collect();
             let result = ExecuteResult {
                 stdout,
                 stderr,
@@ -222,6 +231,7 @@ impl Inner {
                 error: buffers.error.take(),
                 duration_ms: execution.started.elapsed().as_millis() as u64,
                 timed_out_after_ms,
+                opened_paths,
             };
             drop(buffers);
             if let Some(tx) = lock(&execution.result_tx).take() {

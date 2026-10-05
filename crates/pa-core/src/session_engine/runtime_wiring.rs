@@ -255,8 +255,9 @@ pub fn kernel_provisioner(
     on_unavailable_skills: Option<crate::kernel::provisioner::UnavailableSkillsCallback>,
     on_bootstrap_result: Option<crate::kernel::provisioner::KernelBootstrapResultHandler>,
     ready_gate: Option<crate::kernel::provisioner::KernelReadyGate>,
+    context_search_policy: crate::settings::ContextSearchPolicy,
 ) -> Arc<KernelProvisioner> {
-    let mut env = HashMap::with_capacity(3);
+    let mut env = HashMap::with_capacity(4);
     env.insert(
         "PRIME_AGENT_CODING_AGENT_DIR".to_string(),
         agent_dir.to_string_lossy().to_string(),
@@ -281,6 +282,14 @@ pub fn kernel_provisioner(
         }
     }
     env.extend(websearch_env);
+    // The `claude` policy attaches the context covering the files a cell
+    // opened, which the kernel reports only when asked.
+    match context_search_policy {
+        crate::settings::ContextSearchPolicy::Default => {}
+        crate::settings::ContextSearchPolicy::Claude => {
+            env.insert("PRIME_AGENT_TRACK_FILE_OPENS".to_string(), "1".to_string());
+        }
+    }
     Arc::new(KernelProvisioner::new(
         cwd,
         IpythonKernelProvisionerOptions {
@@ -468,6 +477,7 @@ fn convert_execute_result(
         transcript_reads: result.transcript_reads.unwrap_or_default(),
         timed_out_after_ms: result.timed_out_after_ms,
         ended_turn: result.ended_turn,
+        opened_paths: result.opened_paths,
     }
 }
 

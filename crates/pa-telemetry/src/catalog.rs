@@ -272,6 +272,7 @@ pub const FEATURE_NAMES: &[&str] = &[
     "tree",
     "feedback",
     "max_context",
+    "context_search",
 ];
 
 pub const FEATURE_OUTCOMES: &[&str] = &[

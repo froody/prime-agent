@@ -274,6 +274,7 @@ pub async fn create_session(mut config: SessionEngineConfig) -> anyhow::Result<S
     // compaction budget and the auto-refine gates.
     let compaction_settings = settings.settings().compaction.clone().unwrap_or_default();
     let compaction_threshold_percent = settings.get_compaction_threshold_percent();
+    let context_search_policy = settings.get_context_search_policy();
     let auto_refine_gates =
         super::refine::AutoRefineGates::from_settings(settings.settings().auto_refine.as_ref());
     // Request timing: the settings half of the flag is read once here
@@ -540,6 +541,7 @@ pub async fn create_session(mut config: SessionEngineConfig) -> anyhow::Result<S
         on_unavailable_skills,
         on_bootstrap_result,
         config.kernel_ready_gate.clone(),
+        context_search_policy,
     );
     let mut tools = config.tools.clone();
     if !tools.iter().any(|tool| tool.name() == PYTHON_TOOL_NAME) {
@@ -765,7 +767,14 @@ pub async fn create_session(mut config: SessionEngineConfig) -> anyhow::Result<S
         )),
         // SoL Evidence-Preserving Reducer + Action Fusion counting, then
         // Chisle tool-output compression over what they left.
-        after_tool_call: chisle.wrap_after_tool_call(sol.after_tool_call()),
+        // On-demand project context last, so compression never elides it.
+        after_tool_call: {
+            let inner = chisle.wrap_after_tool_call(sol.after_tool_call());
+            match &resources.context_search {
+                Some(search) => Some(search.wrap_after_tool_call(inner)),
+                None => inner,
+            }
+        },
         should_stop_after_turn: {
             let steering = config.queued_steering_probe.take();
             let boundary = config.should_stop_after_turn.take();
@@ -948,6 +957,9 @@ pub async fn create_session(mut config: SessionEngineConfig) -> anyhow::Result<S
     // telemetry handle (installed once the telemetry composition decided
     // whether this session reports at all).
     if let Some(telemetry) = telemetry.as_ref() {
+        if resources.context_search.is_some() {
+            telemetry.note_feature_outcome("context_search", "initiated", None);
+        }
         session.set_skill_telemetry(telemetry.clone());
         // Same lifetime for the `rlm_child_*` session counters: the
         // producer's flush counts through this handle.

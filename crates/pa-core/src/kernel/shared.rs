@@ -226,6 +226,8 @@ pub struct ExecuteResult {
     /// The [`ExecuteOptions::cell_timeout_ms`] limit that interrupted this
     /// cell; `None` when the cell settled on its own or was aborted.
     pub timed_out_after_ms: Option<u64>,
+    /// Files the cell opened (only when the kernel tracks file opens).
+    pub opened_paths: Vec<String>,
 }
 
 /// Options for one `execute` call.

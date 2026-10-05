@@ -74,6 +74,7 @@ pub struct ExecuteResult {
     /// the host marked the execution, and this result terminates the tool
     /// batch (the "turn ended" note on the tool-result text).
     pub ended_turn: bool,
+    pub opened_paths: Vec<String>,
 }
 
 /// The wire form of one sent agent message (TS `KernelSentAgentMessage`):
@@ -439,6 +440,10 @@ pub async fn execute_ipython(
             .iter()
             .map(sent_agent_message_json)
             .collect::<Vec<_>>());
+    }
+
+    if !r.opened_paths.is_empty() {
+        details["openedPaths"] = json!(r.opened_paths);
     }
 
     // The flagged cell ends the turn: the batch rule terminates the run's

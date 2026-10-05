@@ -137,6 +137,7 @@ impl InternalExecuteResult {
                 error: None,
                 duration_ms: started.elapsed().as_millis() as u64,
                 timed_out_after_ms: None,
+                opened_paths: Vec::new(),
             },
             done_fields: None,
         }
