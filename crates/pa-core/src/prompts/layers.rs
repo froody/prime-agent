@@ -5,6 +5,15 @@ pub const CORE_LAYER: &str = include_str!("layers/core.md");
 pub const USAGE_LAYER: &str = include_str!("layers/usage.md");
 pub const OPINIONATED_LAYER: &str = include_str!("layers/opinionated.md");
 
+/// The constant layers every default system prompt starts with, joined as the
+/// prompt joins them. Providers mark its end as a cross-session cache point.
+#[must_use]
+pub fn static_prefix() -> String {
+    [CORE_LAYER, USAGE_LAYER, OPINIONATED_LAYER]
+        .map(str::trim)
+        .join("\n\n")
+}
+
 /// Source file of one layer (breakdown provenance).
 #[must_use]
 pub fn layer_source(name: &str) -> Option<&'static str> {
