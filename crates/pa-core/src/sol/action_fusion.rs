@@ -26,6 +26,18 @@ pub enum CellKind {
     Neither,
 }
 
+impl CellKind {
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            CellKind::Mutate => "mutate",
+            CellKind::Check => "check",
+            CellKind::Fused => "fused",
+            CellKind::Neither => "neither",
+        }
+    }
+}
+
 fn regex(pattern: &str) -> Regex {
     Regex::new(pattern).expect("action-fusion regex compiles")
 }
