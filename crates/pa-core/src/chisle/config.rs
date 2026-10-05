@@ -14,8 +14,10 @@ use super::mode::{Mode, Sections};
 pub const CHISLE_CONFIG_ENV: &str = "CHISLE_CONFIG";
 
 /// Tools whose output may be compressed by default. `edit` is never
-/// compressed: its output feeds exact-match edits.
-const DEFAULT_TOOLS: &[&str] = &["bash", "ipython"];
+/// compressed: its output feeds exact-match edits. `ipython` is left out
+/// because the RLM reads files through it (upstream leaves `read` out for the
+/// same reason): eliding a printed source slice forces a re-read.
+const DEFAULT_TOOLS: &[&str] = &["bash"];
 const NEVER_COMPRESS: &[&str] = &["edit", "read", "write"];
 
 /// Tool-output compression settings (upstream `CHISLE_COMPRESS_*`).
@@ -250,6 +252,7 @@ mod tests {
         assert!(compress.tool_allowed("bash"));
         assert!(compress.tool_allowed("mcp__slack__search"));
         assert!(!compress.tool_allowed("edit"));
+        assert!(!compress.tool_allowed("ipython"));
         compress.tools = Some(vec!["edit".to_string(), "websearch".to_string()]);
         assert!(!compress.tool_allowed("edit"));
         assert!(!compress.tool_allowed("bash"));
