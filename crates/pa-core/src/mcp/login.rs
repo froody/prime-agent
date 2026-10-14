@@ -1,7 +1,6 @@
-//! Login execution for MCP integrations: resolve a server's OAuth setup,
-//! run the interactive flow, persist the endpoint-bound credential, and wire
-//! the `mcp.begin_login` host request in product paths (the TS manager's
-//! `beginLogin` seam, provided by the UI mode).
+//! Login execution for MCP integrations: resolve a server's OAuth setup, run
+//! the interactive flow, persist the endpoint-bound credential, and wire the
+//! `mcp.begin_login` host request in product paths.
 
 use std::sync::{Arc, Mutex, Weak};
 
@@ -14,9 +13,8 @@ use super::oauth::{mcp_login, McpLoginUi, McpOAuthConfig};
 use super::oauth_http::OAuthHttp;
 use super::McpManager;
 
-/// One server's login execution: the resolved OAuth config plus the auth
-/// store to persist into. Detached from the manager on purpose — the flow
-/// awaits UI input, so no manager lock may be held across it.
+/// One server's login execution: the resolved OAuth config plus the auth store. Detached from the
+/// manager on purpose — the flow awaits UI input, so no manager lock may be held across it.
 pub struct McpLoginContext {
     server: String,
     config: McpOAuthConfig,
@@ -28,9 +26,8 @@ impl McpLoginContext {
     ///
     /// # Errors
     ///
-    /// Returns an error when the OAuth login flow fails, when the auth
-    /// storage failed to load beforehand, or when saving the credential
-    /// fails.
+    /// Returns an error when the OAuth login flow fails or saving the
+    /// credential fails.
     pub async fn run(self, ui: &dyn McpLoginUi, http: &dyn OAuthHttp) -> Result<AuthCredential> {
         let provider_id = format!("mcp:{}", self.server);
         let credential = mcp_login(http, &self.config, ui).await?;
@@ -64,14 +61,13 @@ impl McpManager {
         })
     }
 
-    /// The execution context for one login: resolve the config, detach the
-    /// auth store handle. Unknown and non-OAuth servers error with the TS
-    /// wording (the kernel surfaces it to the model).
+    /// The execution context for one login: resolve the config, detach the auth
+    /// store handle. Unknown and non-OAuth servers error with the TS wording.
     ///
     /// # Errors
     ///
-    /// Returns an error when the server is not a known MCP integration or
-    /// does not use OAuth.
+    /// Returns an error when the server is not a known MCP integration or does
+    /// not use OAuth.
     pub fn login_context(&self, server: &str) -> Result<McpLoginContext> {
         let Some(config) = self.oauth_config(server) else {
             return Err(anyhow!("Unknown MCP integration: {server}"));
@@ -84,16 +80,13 @@ impl McpManager {
     }
 }
 
-/// Wire a login UI into the manager so its `mcp.begin_login` host request
-/// runs the full flow (registration happens on the next
-/// `register_host_handlers` call, before the session starts). The wire is
-/// weak on the manager: a dropped manager fails the request instead of
-/// keeping the store alive.
+/// Wire a login UI into the manager so its `mcp.begin_login` host request runs the full flow. The
+/// wire is weak on the manager: a dropped manager fails the request instead of keeping the store
+/// alive.
 ///
 /// # Panics
 ///
-/// The wired login panics if the MCP manager mutex is poisoned (a previous
-/// login panicked while holding the lock).
+/// The wired login panics if the MCP manager mutex is poisoned.
 pub fn wire_begin_login(
     manager: &Arc<Mutex<McpManager>>,
     ui: Arc<dyn McpLoginUi>,
@@ -124,9 +117,8 @@ pub fn wire_begin_login(
     manager.set_begin_login(Some(Arc::new(begin_login)));
 }
 
-/// The OAuth refresh implementation for `mcp:<server>` credentials: the
-/// `AuthStorage` expiry path asks the stored endpoint for a fresh token,
-/// honoring every binding the login established.
+/// The OAuth refresh implementation for `mcp:<server>` credentials: the `AuthStorage` expiry path
+/// asks the stored endpoint for a fresh token.
 pub struct McpOAuth {
     http: Arc<dyn OAuthHttp>,
 }
@@ -176,10 +168,8 @@ impl McpOAuth {
         };
         let http = Arc::clone(&self.http);
         let credential = credentials.clone();
-        // The caller may sit on any thread (a runtime worker, a blocking
-        // pool, or no runtime at all), so the refresh runs on its own
-        // short-lived thread with a private runtime. Refreshes are rare:
-        // token expiry, once per hour at worst.
+        // The caller may sit on any thread (a runtime worker, a blocking pool, or no runtime at
+        // all), so the refresh runs on its own short-lived thread with a private runtime.
         let result = std::thread::Builder::new()
             .name("mcp-oauth-refresh".to_string())
             .spawn(move || {
@@ -405,7 +395,6 @@ mod tests {
         let begin_login = handlers.get("mcp.begin_login").expect("wired").clone();
         begin_login(HostRequestPayload {
             data: json!({ "server": "fixture" }),
-            cell_source_code: None,
         })
         .await
         .unwrap();
@@ -500,11 +489,9 @@ mod tests {
         let begin_login = handlers.get("mcp.begin_login").expect("wired").clone();
         begin_login(HostRequestPayload {
             data: json!({ "server": "linear" }),
-            cell_source_code: None,
         })
         .await
         .unwrap();
-        // Only notion stays gated.
         let gating_manager = Arc::clone(&manager);
         let after = tokio::task::spawn_blocking(move || {
             gating_manager
@@ -533,25 +520,20 @@ mod tests {
         let begin_login = handlers.get("mcp.begin_login").expect("wired").clone();
         let error = begin_login(HostRequestPayload {
             data: json!({ "server": "nope" }),
-            cell_source_code: None,
         })
         .await
         .unwrap_err()
         .to_string();
         assert_eq!(error, "Unknown MCP integration: nope");
-        let error = begin_login(HostRequestPayload {
-            data: json!({}),
-            cell_source_code: None,
-        })
-        .await
-        .unwrap_err()
-        .to_string();
+        let error = begin_login(HostRequestPayload { data: json!({}) })
+            .await
+            .unwrap_err()
+            .to_string();
         assert_eq!(error, "mcp.begin_login requires a server");
     }
 
-    /// Expired credentials refresh through the `AuthStorage` seam: the
-    /// stored endpoint answers a `refresh_token` grant, and the new
-    /// credential keeps every binding.
+    /// Expired credentials refresh through the `AuthStorage` seam: the stored endpoint answers a
+    /// `refresh_token` grant.
     #[tokio::test]
     async fn mcp_oauth_refreshes_expired_credentials() {
         let agent = tempfile::tempdir().unwrap();
@@ -563,7 +545,6 @@ mod tests {
             AuthCredential::Oauth {
                 access: "stale".to_string(),
                 refresh: Some("fixture-refresh".to_string()),
-                // Expired: resolution must refresh.
                 expires: 1,
                 account_id: None,
                 endpoint: Some("https://fixture.example/mcp".to_string()),
@@ -571,6 +552,7 @@ mod tests {
                 client_id: Some("fixture-client".to_string()),
                 resource: None,
                 issuer: None,
+                audience_mode: None,
                 enterprise_url: None,
             },
         );
@@ -588,10 +570,7 @@ mod tests {
         assert_eq!(auth.get_api_key("mcp:fixture").unwrap(), "fixture-access");
     }
 
-    /// A credential written by another process (the interactive client's
-    /// `/mcp login` shares only the file) is visible to the worker's
-    /// `mcp.refresh`: the handler re-reads the store instead of serving
-    /// the manager's pre-login snapshot.
+    /// A credential written by another process is visible to the worker's `mcp.refresh`:.
     #[tokio::test]
     async fn refresh_sees_credentials_written_by_another_process() {
         let agent = tempfile::tempdir().unwrap();
@@ -602,7 +581,6 @@ mod tests {
         let refresh = handlers.get("mcp.refresh").expect("wired").clone();
         let error = refresh(HostRequestPayload {
             data: json!({ "server": "fixture" }),
-            cell_source_code: None,
         })
         .await
         .unwrap_err()
@@ -624,13 +602,13 @@ mod tests {
                 client_id: Some("fixture-client".to_string()),
                 resource: None,
                 issuer: None,
+                audience_mode: None,
                 enterprise_url: None,
             },
         );
 
         refresh(HostRequestPayload {
             data: json!({ "server": "fixture" }),
-            cell_source_code: None,
         })
         .await
         .unwrap();
@@ -659,7 +637,6 @@ mod tests {
         let refresh = handlers.get("mcp.refresh").expect("wired").clone();
         let error = refresh(HostRequestPayload {
             data: json!({ "server": "session-tool" }),
-            cell_source_code: None,
         })
         .await
         .unwrap_err()

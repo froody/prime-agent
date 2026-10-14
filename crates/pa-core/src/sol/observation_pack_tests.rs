@@ -4,7 +4,7 @@ use pa_agent::types::{ImageContent, TextContent};
 fn tool_result(body: &str) -> ToolResultMessage {
     ToolResultMessage {
         tool_call_id: "call-1".to_string(),
-        tool_name: "ipython".to_string(),
+        tool_name: pa_types::ai::PYTHON_TOOL_NAME.to_string(),
         content: vec![ToolResultContent::text(body)],
         details: None,
         is_error: false,

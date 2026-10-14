@@ -15,7 +15,8 @@ deny:
 	cargo deny --all-features --workspace check advisories licenses
 
 # Windows cfg-hygiene gate: cross-target check +
-# clippy at -D warnings for every crate and test. Fails loudly when the
+# clippy at -D warnings for every crate and test, the local mirror of the
+# ci.yml windows-cross job (.github/workflows/ci.yml). Fails loudly when the
 # target is missing instead of silently skipping the gate.
 windows-cross:
 	@rustup target list --installed | grep -q x86_64-pc-windows-gnu || { echo "x86_64-pc-windows-gnu target not installed (rustup target add x86_64-pc-windows-gnu)"; exit 1; }
@@ -35,11 +36,12 @@ windows-msvc-cross:
 	@command -v cargo-xwin >/dev/null 2>&1 || { echo "cargo-xwin not installed (cargo install cargo-xwin --locked; it provisions the MSVC CRT + expects clang-cl/llvm-lib on PATH)"; exit 1; }
 	cargo xwin check --workspace --target x86_64-pc-windows-msvc --all-targets
 
-# Lints the live workflow files (.github/workflows/).
+# Lints every workflow file (.github/workflows/ is the one home for
+# workflow files).
 actionlint:
 	@command -v actionlint >/dev/null 2>&1 || { echo "actionlint not installed (see rhysd/actionlint releases)"; exit 1; }
-	actionlint .github/workflows/ci.yml .github/workflows/continuous.yml \
-		.github/workflows/release.yml .github/workflows/windows-runtime-triage.yml \
+	actionlint .github/workflows/ci.yml .github/workflows/codebase-health.yml .github/workflows/contribution-gate.yml \
+		.github/workflows/continuous.yml .github/workflows/release.yml .github/workflows/windows-runtime-triage.yml \
 		.github/workflows/release-prepare.yml .github/workflows/nightly.yml
 
 # GLIBC baseline gate (the continuous.yml/release.yml build-gnu jobs): a
@@ -186,3 +188,10 @@ shard-gates:
 	python3 scripts/test_ci_pr_crates.py
 
 .PHONY: check deny windows-cross actionlint glibc-gate release-dry-run continuous-dry-run audit-build package catalog-assets catalog-assets-fixture catalog-assets-gates fold-gates restamp-gates shard-gates
+
+# Offline packaging contract tests for updaters shipped since Prime Agent 0.6.
+legacy-upgrade-gates:
+	python3 scripts/release/test_native_compat.py
+	python3 scripts/release/test_npm_bridge.py
+
+.PHONY: legacy-upgrade-gates

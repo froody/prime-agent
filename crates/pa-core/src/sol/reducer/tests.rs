@@ -73,7 +73,7 @@ async fn run(
     let content = vec![ToolResultContent::text(body)];
     reducer
         .reduce(ToolCallOutcome {
-            tool_name: "ipython",
+            tool_name: pa_types::ai::PYTHON_TOOL_NAME,
             args: &args,
             content: &content,
             details: &Value::Null,

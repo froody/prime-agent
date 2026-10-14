@@ -252,7 +252,7 @@ mod tests {
         assert!(compress.tool_allowed("bash"));
         assert!(compress.tool_allowed("mcp__slack__search"));
         assert!(!compress.tool_allowed("edit"));
-        assert!(!compress.tool_allowed("ipython"));
+        assert!(!compress.tool_allowed(pa_types::ai::PYTHON_TOOL_NAME));
         compress.tools = Some(vec!["edit".to_string(), "websearch".to_string()]);
         assert!(!compress.tool_allowed("edit"));
         assert!(!compress.tool_allowed("bash"));

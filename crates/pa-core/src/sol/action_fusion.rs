@@ -14,7 +14,7 @@ use fancy_regex::Regex;
 pub const FUSION_GUIDANCE: &str = "
 
 ## Action fusion
-After mutating files in an ipython cell, run the focused check (test/typecheck/lint) in the SAME cell and print only its tail or failures.
+After mutating files in a python_repl cell, run the focused check (test/typecheck/lint) in the SAME cell and print only its tail or failures.
 Don't spend a separate turn on the check. Put the mutation first so a failed check still leaves the edit applied.";
 
 /// What an `ipython` cell does, lexically.

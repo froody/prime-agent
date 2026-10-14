@@ -206,7 +206,7 @@ pub fn placeholder_for(observation: &Observation) -> String {
         format!("original_lines: {}", observation.lines),
         format!("estimated_tokens: {}", observation.tokens),
         format!("path: {}", observation.file_path.display()),
-        "retrieve: read the exact original from path in ipython, e.g. open(path).read()[a:b] or grep; do not re-run the producing command".to_string(),
+        "retrieve: read the exact original from path in python_repl, e.g. open(path).read()[a:b] or grep; do not re-run the producing command".to_string(),
         format!("[first complete lines, up to {head_budget} bytes]"),
         head,
         format!("[middle omitted; last complete lines, up to {tail_budget} bytes]"),

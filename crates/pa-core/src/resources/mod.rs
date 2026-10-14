@@ -1,8 +1,7 @@
 //! Project context files (AGENTS.md/CLAUDE.md discovery) and the resource
-//! loader. Port of core/resource-loader.ts, scoped to the session engine's
-//! needs: skills, prompt templates, agents files, and system-prompt sources,
-//! resolved from configured packages, settings, auto-discovery, and bundled
-//! skills through the package manager. Theme loading lives in pa-tui.
+//! loader: skills, prompt templates, agents files, and system-prompt
+//! sources, resolved from configured packages, settings, auto-discovery,
+//! and bundled skills through the package manager. Theme loading lives in pa-tui.
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -16,7 +15,6 @@ use crate::skills::{
 /// AGENTS.md-family candidates, in priority order.
 const CONTEXT_FILE_CANDIDATES: [&str; 4] = ["AGENTS.md", "AGENTS.MD", "CLAUDE.md", "CLAUDE.MD"];
 
-/// A loaded context file (path + content).
 #[derive(Debug, Clone, PartialEq)]
 pub struct ContextFile {
     pub path: PathBuf,
@@ -36,8 +34,7 @@ fn load_context_file_from_dir(dir: &Path) -> Option<ContextFile> {
     None
 }
 
-/// Load the global (agentDir) context file first, then the nearest-to-root
-/// ancestor chain of cwd. Port of loadProjectContextFiles.
+/// Load the global (agentDir) context file first, then the nearest-to-root ancestor chain of cwd.
 #[must_use]
 pub fn load_project_context_files(cwd: &Path, agent_dir: &Path) -> Vec<ContextFile> {
     let mut context_files = Vec::new();
@@ -70,8 +67,7 @@ pub fn load_project_context_files(cwd: &Path, agent_dir: &Path) -> Vec<ContextFi
 }
 
 pub mod context_search;
-// Session resource resolution (package-manager `resolve()`) feeds the
-// loader below.
+// Session resource resolution (package-manager `resolve()`) feeds the loader below.
 pub(crate) mod resolution;
 
 use anyhow::Result;
@@ -79,7 +75,6 @@ use anyhow::Result;
 use crate::packages::BundledSkillsDir;
 use crate::settings::{ContextSearchPolicy, SettingsManager};
 
-/// Loaded resources for a session.
 #[derive(Debug, Default)]
 pub struct LoadedResources {
     pub skills: Vec<Skill>,
@@ -92,8 +87,8 @@ pub struct LoadedResources {
     pub append_system_prompt: Vec<String>,
 }
 
-/// Resource loading options (the TS `DefaultResourceLoaderOptions` surface,
-/// minus the theme machinery).
+/// Resource loading options (the TS `DefaultResourceLoaderOptions` surface, minus the theme
+/// machinery).
 #[derive(Default)]
 pub struct ResourceLoaderOptions {
     pub cwd: PathBuf,
@@ -130,8 +125,7 @@ impl ResourceLoaderOptions {
 ///
 /// # Errors
 ///
-/// Returns an error when the session resource resolution fails (a
-/// configured package source cannot be parsed, installed, or refreshed).
+/// Error when a configured package source cannot be parsed, installed, or refreshed.
 pub fn load_resources(mut options: ResourceLoaderOptions) -> Result<LoadedResources> {
     let settings = options
         .settings
@@ -363,7 +357,6 @@ mod tests {
         .unwrap();
         let found = discover_system_prompt_file(&project, &agent_dir).unwrap();
         assert!(found.to_string_lossy().contains("proj"));
-        // Content resolution reads the file.
         assert_eq!(
             resolve_prompt_input(&found.to_string_lossy()),
             Some("project system".to_string())
@@ -418,7 +411,6 @@ mod tests {
         let cwd = tmp.path().join("proj");
         fs::create_dir_all(&agent_dir).unwrap();
         fs::create_dir_all(&cwd).unwrap();
-        // A local package with a skill and a prompt.
         let pkg = tmp.path().join("fixture-pkg");
         fs::create_dir_all(pkg.join("skills").join("pack-skill")).unwrap();
         fs::create_dir_all(pkg.join("prompts")).unwrap();
@@ -499,7 +491,6 @@ mod tests {
             alpha[0].source_info.scope,
             crate::skills::SourceScope::Project
         );
-        // The loser surfaces as a collision diagnostic.
         assert!(resources
             .skill_diagnostics
             .iter()

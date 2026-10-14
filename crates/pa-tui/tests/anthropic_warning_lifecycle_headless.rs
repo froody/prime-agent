@@ -235,6 +235,13 @@ struct StubSettings {
 }
 
 impl pa_tui::client_settings::ClientSettings for StubSettings {
+    fn compaction_threshold_percent(&self) -> f64 {
+        95.0
+    }
+    fn set_compaction_threshold_percent(&self, _percent: f64) -> Result<()> {
+        Ok(())
+    }
+
     fn theme(&self) -> Option<String> {
         None
     }
@@ -340,6 +347,12 @@ impl pa_tui::client_settings::ClientSettings for StubSettings {
     fn set_chat_detail(&self, _detail: &str) -> Result<()> {
         Ok(())
     }
+    fn factory_enabled(&self) -> bool {
+        false
+    }
+    fn set_factory_enabled(&self, _enabled: bool) -> Result<()> {
+        Ok(())
+    }
     fn warnings_anthropic_extra_usage(&self) -> bool {
         self.anthropic_extra_usage
     }
@@ -351,6 +364,12 @@ impl pa_tui::client_settings::ClientSettings for StubSettings {
     }
     fn set_update_channel(&self, _channel: &str) -> Result<()> {
         Ok(())
+    }
+    fn telemetry_status(&self) -> String {
+        String::new()
+    }
+    fn set_telemetry_enabled(&self, _enabled: bool) -> Result<String> {
+        Ok(String::new())
     }
     fn effective_update_channel(&self, version: &str) -> String {
         if version.contains("-beta") {

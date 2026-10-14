@@ -163,7 +163,7 @@ fn touched_files(tool_name: &str, args: &Value, details: &Value) -> Vec<PathBuf>
             .map(PathBuf::from)
             .into_iter()
             .collect(),
-        "ipython" => details
+        pa_types::ai::PYTHON_TOOL_NAME => details
             .get("openedPaths")
             .and_then(Value::as_array)
             .into_iter()

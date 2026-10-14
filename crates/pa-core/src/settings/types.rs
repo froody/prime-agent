@@ -1,6 +1,5 @@
-//! Settings types (settings-manager.ts). All fields optional; JSON values of
-//! the wrong type load as `None` (the TS access-time typechecks), never a
-//! load error.
+//! Settings types. All fields optional; JSON values of the wrong type load
+//! as `None` (the TS access-time typechecks), never a load error.
 
 use serde::{Deserialize, Serialize};
 
@@ -33,8 +32,7 @@ pub enum UpdateChannel {
     Nightly,
 }
 
-/// Thinking levels in wire form ("off" | "minimal" | "low" | "medium" |
-/// "high" | "xhigh" | "max").
+/// Thinking levels in wire form ("off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max").
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum ThinkingLevelSetting {
@@ -48,9 +46,8 @@ pub enum ThinkingLevelSetting {
 }
 
 impl ThinkingLevelSetting {
-    /// The reverse of [`ThinkingLevelSetting::model_level`]: a live switch
-    /// (daemon `set_thinking_level`) persists a model-vocabulary level as
-    /// the settings default without re-matching this enum at the call site.
+    /// The reverse of [`ThinkingLevelSetting::model_level`]: a live switch (daemon
+    /// `set_thinking_level`) persists a model-vocabulary level as the settings default.
     #[must_use]
     pub fn from_model_level(level: pa_types::ai::ModelThinkingLevel) -> ThinkingLevelSetting {
         match level {
@@ -65,8 +62,7 @@ impl ThinkingLevelSetting {
     }
 
     /// The same level in the shared model vocabulary: the settings default
-    /// feeds session thinking-level resolution, so callers need the
-    /// pa-types value without re-matching this enum.
+    /// feeds session thinking-level resolution.
     #[must_use]
     pub fn model_level(self) -> pa_types::ai::ModelThinkingLevel {
         match self {
@@ -99,6 +95,15 @@ pub enum TransportSetting {
     WebSocketCached,
 }
 
+fn deserialize_threshold_percent<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<f64>, D::Error> {
+    let value = serde_json::Value::deserialize(deserializer)?;
+    Ok(value
+        .as_f64()
+        .filter(|percent| pa_types::compaction::is_valid_threshold_percent(*percent)))
+}
+
 /// `number | "unlimited"` autonomous limit.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
@@ -111,6 +116,9 @@ pub enum AutonomousLimitSetting {
 #[serde(rename_all = "camelCase")]
 pub struct CompactionSettings {
     pub enabled: Option<bool>,
+    /// Percentage ceiling for automatic compaction; invalid values behave as unset.
+    #[serde(default, deserialize_with = "deserialize_threshold_percent")]
+    pub threshold_percent: Option<f64>,
     pub reserve_tokens: Option<u64>,
     pub keep_recent_tokens: Option<u64>,
     pub max_context_tokens: Option<u64>,
@@ -141,13 +149,11 @@ pub struct ProviderWaitSettings {
     pub max_delay_ms: Option<u64>,
     pub max_attempts: Option<u64>,
     pub max_wait_ms: Option<u64>,
-    /// Park sessions for provider-reported resets beyond the bounded
-    /// wait (TS #2375 `pauseUntilReset`; default true).
+    /// Park sessions for provider-reported resets beyond the bounded wait (default true).
     pub pause_until_reset: Option<bool>,
-    /// Maximum single park duration (TS `maxPauseMs`; default 24h,
-    /// clamped to 7d).
+    /// Maximum single park duration (default 24h, clamped to 7d).
     pub max_pause_ms: Option<u64>,
-    /// Maximum parks per quota episode (TS `maxParks`; default 8).
+    /// Maximum parks per quota episode (default 8).
     pub max_parks: Option<u64>,
 }
 
@@ -243,25 +249,24 @@ pub struct AgentTracesSettings {
     pub enabled: Option<bool>,
 }
 
+/// `factory` (the agent factory's opt-in gate): `factory.enabled` is
+/// unset/false by default, and the `/factory on` client command persists
+/// it. Both the daemon's `factory_activity` lane advertisement and the
+/// kernel's factory gate read the same shared settings key.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FactorySettings {
+    pub enabled: Option<bool>,
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TelemetrySettings {
     pub enabled: Option<bool>,
     pub notice_shown: Option<bool>,
-    /// Self-hosted `PostHog` capture configuration. Nothing is compiled in;
-    /// an empty configuration resolves to the no-op sink.
-    pub posthog: Option<PostHogSettings>,
     /// Local JSONL mirror at `<agentDir>/telemetry.jsonl` (default on:
     /// user-observable transparency).
     pub local_mirror: Option<bool>,
-}
-
-/// Settings `telemetry.posthog`: endpoint + project capture key.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PostHogSettings {
-    pub endpoint: Option<String>,
-    pub api_key: Option<String>,
 }
 
 /// User-declared MCP server (settings `mcpServers` entry).
@@ -323,16 +328,14 @@ pub struct Settings {
     pub default_thinking_level: Option<ThinkingLevelSetting>,
     pub default_service_tier: Option<String>,
     pub rlm_max_depth: Option<u64>,
-    /// `number | "off" | "none"`; raw JSON because the TS getter validates at
-    /// access time.
+    /// `number | "off" | "none"`; raw JSON because the TS getter validates at access time.
     pub idle_eviction_minutes: Option<serde_json::Value>,
     /// Session archiving age rule: sessions untouched for this many days are
     /// moved to the daemon's archive directory. `number | "off" | "none"`; raw
     /// JSON validated at access time (same grammar as `idleEvictionMinutes`).
     pub session_archive_max_age_days: Option<serde_json::Value>,
-    /// Session archiving count rule: keep at most this many unarchived
-    /// sessions (newest by mtime win); `0 | "off" | "none"` disables. Raw JSON
-    /// validated at access time.
+    /// Session archiving count rule: keep at most this many unarchived sessions (newest by mtime
+    /// win); `0 | "off" | "none"` disables. Raw JSON validated at access time.
     pub session_archive_max_sessions: Option<serde_json::Value>,
     pub transport: Option<TransportSetting>,
     pub steering_mode: Option<QueueModeSetting>,
@@ -340,25 +343,33 @@ pub struct Settings {
     pub theme: Option<String>,
     pub compaction: Option<CompactionSettings>,
     pub auto_refine: Option<AutoRefineSettings>,
+    /// Master switch for harness creation and context loading; unset preserves enabled behavior.
+    pub harness_refinements: Option<bool>,
     pub agent_traces: Option<AgentTracesSettings>,
+    pub factory: Option<FactorySettings>,
     pub telemetry: Option<TelemetrySettings>,
     pub branch_summary: Option<BranchSummarySettings>,
     pub retry: Option<RetrySettings>,
     pub provider_backup_model: Option<String>,
-    /// Model ("provider/model-id" or a bare model id) that serves turns
-    /// attaching images when the session model does not accept image
-    /// input. Default: none - image turns on a text-only model fail with
-    /// a configuration hint instead of silently dropping the images.
+    /// Model ("provider/model-id" or a bare model id) that serves turns attaching images when the
+    /// session model does not accept image input. Default: none - image turns on a text-only model
+    /// fail with a configuration hint instead of silently dropping the images.
     pub image_model: Option<String>,
     pub autonomous: Option<AutonomousSettings>,
+    /// Custom shell that runs every kernel `bash()` and user-bash command as
+    /// `<shell> -c <command>`: an absolute path to an existing executable,
+    /// validated once at session start (a bad value fails session creation
+    /// naming this setting). Project `.prime/agent/settings.json` overrides
+    /// the global value (TS parity), so opening an untrusted repo lets it
+    /// choose the binary that wraps every agent shell command - review
+    /// project settings before running the agent there.
     pub shell_path: Option<String>,
     pub quiet_startup: Option<bool>,
     pub shell_command_prefix: Option<String>,
     pub npm_command: Option<Vec<String>>,
     pub mcp_servers: Option<serde_json::Map<String, serde_json::Value>>,
-    /// Extra local MCP service-catalog files (TS `mcpCatalogSources`;
-    /// ~-relative allowed), merged after the compiled built-ins, first
-    /// source wins per id, and no bundled id can be shadowed.
+    /// Extra local MCP service-catalog files (~-relative allowed), merged after the
+    /// compiled built-ins; first source wins per id, and no bundled id can be shadowed.
     pub mcp_catalog_sources: Option<Vec<String>>,
     pub packages: Option<Vec<serde_json::Value>>,
     pub skills: Option<Vec<String>>,
@@ -370,17 +381,12 @@ pub struct Settings {
     pub terminal: Option<TerminalSettings>,
     pub images: Option<ImageSettings>,
     pub enabled_models: Option<Vec<String>>,
-    /// Rust-only daemon-level model allowlist: model patterns (the
-    /// `--models` CLI scope grammar) the daemon may resolve to. Enforced at
-    /// the daemon's model-resolution seams (`set_model`, RLM child-model
-    /// resolution, the worker startup chain); a model outside the allowlist
-    /// fails loudly instead of resolving, with no fallback. `None` is
-    /// unrestricted (the TS behavior).
+    /// Rust-only daemon-level model allowlist: a model outside fails loudly instead
+    /// of resolving, with no fallback. `None` is unrestricted.
     pub allowed_models: Option<Vec<String>>,
     pub tree_filter_mode: Option<String>,
-    /// `chatDetail` (TS #2709): the conversation-detail level Ctrl+O
-    /// cycles and persists ("overview"/"details"/"all"); `None` reads
-    /// as the `overview` startup level (the collapse mode).
+    /// `chatDetail`: the conversation-detail level Ctrl+O cycles and persists
+    /// ("overview"/"details"/"all"); `None` reads as the `overview` startup level.
     pub chat_detail: Option<String>,
     pub thinking_budgets: Option<ThinkingBudgetsSettings>,
     pub editor_padding_x: Option<u64>,
@@ -389,8 +395,8 @@ pub struct Settings {
     pub markdown: Option<MarkdownSettings>,
     pub warnings: Option<WarningSettings>,
     pub session_dir: Option<String>,
-    /// Log per-request provider timing phases to the diagnostic log (TS
-    /// `requestTiming`; unset means OFF, exactly the TS default).
+    /// Log per-request provider timing phases to the diagnostic log
+    /// (unset means OFF, exactly the TS default).
     pub request_timing: Option<bool>,
     /// Rust-only `contextSearchPolicy`; unset is [`ContextSearchPolicy::Default`].
     pub context_search_policy: Option<ContextSearchPolicy>,

@@ -133,7 +133,7 @@ impl SolSession {
                 let code = context.args.get("code").and_then(serde_json::Value::as_str);
                 let fusion_receipt = match (&session.fusion, code, context.tool_call.name.as_str())
                 {
-                    (Some(fusion), Some(code), "ipython") => {
+                    (Some(fusion), Some(code), pa_types::ai::PYTHON_TOOL_NAME) => {
                         let mut counts = fusion
                             .lock()
                             .unwrap_or_else(std::sync::PoisonError::into_inner);

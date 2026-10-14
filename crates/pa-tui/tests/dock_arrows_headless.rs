@@ -1,44 +1,24 @@
-//! Headless e2e for the activity dock's arrow traversal (the operator's
-//! 2026-09-26 muscle-memory directive): a mock supervisor mounts the
-//! dock's live goal row and scripted heartbeat rows when the plan asks
-//! for them, and the plan drives the dock with the same key path a
-//! user's arrows take (alt+a to focus, left/right to step, enter to open
-//! the focused section's view).
-//!
-//! Verifies the contract: every rendered section is exactly one press
-//! away in both directions — an empty section (0 subagents, 0 heartbeats,
-//! 0 shells) is still visited, never skipped, and the cycle wraps — and
-//! entering a section opens its view, whose existing empty state reads
-//! the pane grammar ("No running or paused heartbeats" for heartbeats,
-//! "No background commands" for shells). With nothing mounted at all,
-//! the all-zero dock still renders (the operator's 2026-09-28 directive)
-//! and its Subagents group opens the scoped agents view's empty state.
-//! The TS dock has no section traversal at all (`subagent-summary-line.ts`
-//! handles confirm/cancel only and renders nothing when its counts are
-//! zero), so this surface is the documented Rust divergence.
+//! Headless e2e for the activity dock's arrow traversal (operator
+//! directive 2026-09-26): every rendered section is one press away in
+//! both directions (empty sections visited, cycle wraps), and entering
+//! opens its view; the TS dock has no section traversal (Rust divergence).
+//! The event-driven pins below hold the dock's update contract: every dock
+//! input repaints on its own daemon event, never on a per-wake recompute.
 #![cfg(unix)]
-// Pedantic-gate exceptions (every other pedantic warning in this crate is
-// fixed in place; each exception carries its one-line justification):
-// - the casts: terminal-layout arithmetic narrows structurally bounded
-//   values (screen coordinates, byte counts, timestamps); guarded
-//   conversions would add panic paths the bounds guarantee away.
+// Casts: structurally bounded terminal-layout arithmetic; guarded conversions add panic paths.
 #![allow(
     clippy::cast_possible_truncation,
     clippy::cast_possible_wrap,
     clippy::cast_sign_loss,
     clippy::cast_precision_loss
 )]
-// - the render routes are flat tables (one arm per route); splitting them
-//   would add indirection without changing the flow.
+// Render routes are flat tables (one arm per route); splitting adds indirection.
 #![allow(clippy::too_many_lines)]
-// - widget state structs carry independent flag bits; a nested struct
-//   would add indirection without changing the shape.
+// Widget state structs carry independent flag bits.
 #![allow(clippy::struct_excessive_bools, clippy::fn_params_excessive_bools)]
-// - the futures are bounded by the surface's lifetime; boxing them would
-//   add an allocation to the steady-state loop.
+// Futures are bounded by the surface's lifetime; boxing adds a steady-state allocation.
 #![allow(clippy::large_futures)]
-// - the wrappers preserve a uniform Result-returning API surface; unwrap
-//   removals would ripple through the callers without changing behavior.
+// The wrappers preserve a uniform Result-returning API surface.
 #![allow(clippy::unnecessary_wraps)]
 
 use std::io::{BufRead, BufReader, Write};
@@ -55,25 +35,39 @@ use serde_json::{json, Value};
 
 struct MockSupervisor {
     listener: UnixListener,
-    /// The `heartbeats_list` catalog to answer with (`None` serves the
-    /// empty catalog — the 0-heartbeats dock).
+    /// The `heartbeats_list` catalog to answer with (`None` serves the empty catalog — the
+    /// 0-heartbeats dock).
     heartbeats: Option<Value>,
-    /// The live `goal_update` event to serve on attach (`None` mounts
-    /// no goal row — the all-zero dock).
+    /// The live `goal_update` event to serve on attach (`None` mounts no goal row — the all-zero
+    /// dock).
     goal: Option<Value>,
+    /// Successive `roster_subscribe` snapshots, one per attach; an exhausted list keeps serving
+    /// the last one, and an empty list serves the empty roster.
+    roster: Vec<Value>,
+    /// Live frames to push right after the `roster_subscribe` response (the events the dock pins
+    /// drive): each attach re-sends them.
+    pushes: Vec<Value>,
 }
 
 impl MockSupervisor {
-    fn bind(socket: &std::path::Path, heartbeats: Option<Value>, goal: Option<Value>) -> Self {
+    fn bind(
+        socket: &std::path::Path,
+        heartbeats: Option<Value>,
+        goal: Option<Value>,
+        roster: Vec<Value>,
+        pushes: Vec<Value>,
+    ) -> Self {
         MockSupervisor {
             listener: UnixListener::bind(socket).expect("bind mock socket"),
             heartbeats,
             goal,
+            roster,
+            pushes,
         }
     }
 
-    /// Serve one client connection until it goes quiet (bounded, so the
-    /// plan teardown join always finishes).
+    /// Serve one client connection until it goes quiet (bounded, so the plan teardown join always
+    /// finishes).
     fn serve(self) {
         self.listener
             .set_nonblocking(true)
@@ -104,6 +98,7 @@ impl MockSupervisor {
         write_json(&mut writer, &hello);
 
         let mut line = String::new();
+        let mut subscribe = 0usize;
         loop {
             line.clear();
             match reader.read_line(&mut line) {
@@ -155,6 +150,28 @@ impl MockSupervisor {
                             "data": self.heartbeats.clone().unwrap_or_else(|| json!({})),
                         }),
                     );
+                }
+                "roster_subscribe" => {
+                    let snapshot = self
+                        .roster
+                        .get(subscribe)
+                        .or_else(|| self.roster.last())
+                        .cloned()
+                        .unwrap_or_else(|| json!({}));
+                    subscribe += 1;
+                    write_json(
+                        &mut writer,
+                        &json!({
+                            "type": "response",
+                            "id": id,
+                            "command": "roster_subscribe",
+                            "success": true,
+                            "data": snapshot,
+                        }),
+                    );
+                    for frame in &self.pushes {
+                        write_json(&mut writer, frame);
+                    }
                 }
                 _ => {
                     write_json(
@@ -225,9 +242,8 @@ fn attach_data(id: &str) -> Value {
     })
 }
 
-/// The dock's live goal row: the session has no subagents, heartbeats,
-/// or shells, so every other section renders empty and the arrows must
-/// still visit them.
+/// The dock's live goal row: the session has no subagents, heartbeats, or shells, so every other
+/// section renders empty and the arrows must still visit them.
 fn live_goal() -> Value {
     json!({
         "type": "goal_update",
@@ -243,8 +259,8 @@ fn live_goal() -> Value {
     })
 }
 
-/// One session heartbeat row: the session's own job, so it scopes into
-/// the dock's heartbeats section and its view.
+/// One session heartbeat row: the session's own job, so it scopes into the dock's heartbeats
+/// section and its view.
 fn canary_heartbeats() -> Value {
     json!({
         "heartbeats": [
@@ -306,40 +322,47 @@ fn alt_a() -> KeyEvent {
     KeyEvent::new(KeyCode::Char('a'), KeyModifiers::ALT)
 }
 
-/// One right-arrow key event (the dock's next-section step).
 fn right() -> KeyEvent {
     KeyEvent::new(KeyCode::Right, KeyModifiers::NONE)
 }
 
-/// One left-arrow key event (the dock's previous-section step).
 fn left() -> KeyEvent {
     KeyEvent::new(KeyCode::Left, KeyModifiers::NONE)
 }
 
-/// One plain Enter key event (the focused section's open).
 fn enter() -> KeyEvent {
     KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE)
 }
 
-/// One Esc key event (`tui.select.cancel`: the open view closes and the
-/// focus returns to the editor).
+/// One Esc key event (`tui.select.cancel`: the open view closes and the focus returns to the
+/// editor).
 fn escape() -> KeyEvent {
     KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE)
 }
 
-/// Run the headless plan against a fresh mock supervisor and return the
-/// captured frames.
 fn run_plan(
     steps: Vec<HeadlessStep>,
     heartbeats: Option<Value>,
     goal: Option<Value>,
 ) -> pa_tui::interactive::InteractiveOutcome {
-    // The ambient TMUX variable adds a startup notice to the transcript;
-    // scrub it so the run is the same inside tmux and out.
+    run_plan_with_roster(steps, heartbeats, goal, Vec::new(), Vec::new())
+}
+
+/// `run_plan` plus the `roster_subscribe` snapshots and the live frames pushed after each
+/// subscription reply (the event-driven dock pins' mock surface).
+fn run_plan_with_roster(
+    steps: Vec<HeadlessStep>,
+    heartbeats: Option<Value>,
+    goal: Option<Value>,
+    roster: Vec<Value>,
+    pushes: Vec<Value>,
+) -> pa_tui::interactive::InteractiveOutcome {
+    // The ambient TMUX variable adds a startup notice; scrub it so runs are the same inside tmux
+    // and out.
     std::env::remove_var("TMUX");
     let dir = tempfile::TempDir::new().expect("temp dir");
     let socket = dir.path().join("tui.sock");
-    let supervisor = MockSupervisor::bind(&socket, heartbeats, goal);
+    let supervisor = MockSupervisor::bind(&socket, heartbeats, goal, roster, pushes);
     let handle = std::thread::spawn(move || supervisor.serve());
 
     let runtime = tokio::runtime::Builder::new_multi_thread()
@@ -358,33 +381,19 @@ fn run_plan(
     outcome
 }
 
-/// The dock's arrow traversal with every section empty: the goal row
-/// adds the goal section beside the zero-count ones (0 subagents,
-/// 0 heartbeats, 0 shells) and the arrows still visit each section in
-/// order — right through the empty
-/// heartbeats and shells sections to the goal section, then left back
-/// through them to the subagents section. Each visited section opens
-/// its own view, whose existing empty state reads the pane grammar.
-/// The panel-exit ruling (2026-09-26) keeps the dock focused on the
-/// closed section's own item, so the walk needs no re-grab press
-/// between the sections. Left from the subagents section no longer
-/// wraps to the row's last section (the operator's 2026-09-28 ask): it
-/// opens the scoped agents view — the run hands the pane to the agents
-/// surface and ends (the pure `step` tests keep pinning the wrap).
+/// The arrows still visit each empty section in order, each opening its own view (panel-exit
+/// ruling 2026-09-26); Left from the subagents section opens the scoped agents view (2026-09-28).
 #[test]
 fn dock_arrows_visit_each_empty_section_in_order_both_directions() {
     let steps = vec![
-        // The goal row adds the goal section; the other three sections
-        // render their zero counts.
         HeadlessStep::WaitRender {
             needle: "Pursuing goal (0s)".to_string(),
             timeout_ms: 5_000,
         },
-        // Focus the dock: the selection starts on the subagents section.
+        // The selection starts on the subagents section.
         HeadlessStep::Key(alt_a()),
         HeadlessStep::WaitMs(100),
-        // One right press lands on the EMPTY heartbeats section — the
-        // old skip stepped straight over it.
+        // One right press lands on the EMPTY heartbeats section.
         HeadlessStep::Key(right()),
         HeadlessStep::WaitMs(100),
         HeadlessStep::Key(enter()),
@@ -394,7 +403,6 @@ fn dock_arrows_visit_each_empty_section_in_order_both_directions() {
         },
         HeadlessStep::Key(escape()),
         HeadlessStep::WaitMs(100),
-        // The next press in order: the empty shells section.
         HeadlessStep::Key(right()),
         HeadlessStep::WaitMs(100),
         HeadlessStep::Key(enter()),
@@ -404,8 +412,6 @@ fn dock_arrows_visit_each_empty_section_in_order_both_directions() {
         },
         HeadlessStep::Key(escape()),
         HeadlessStep::WaitMs(100),
-        // The third press in order: the goal section, one press past
-        // the empty shells section.
         HeadlessStep::Key(right()),
         HeadlessStep::WaitMs(100),
         HeadlessStep::Key(enter()),
@@ -415,8 +421,6 @@ fn dock_arrows_visit_each_empty_section_in_order_both_directions() {
         },
         HeadlessStep::Key(escape()),
         HeadlessStep::WaitMs(100),
-        // Left walks the same sections in reverse: goal -> shells ->
-        // heartbeats.
         HeadlessStep::Key(left()),
         HeadlessStep::WaitMs(100),
         HeadlessStep::Key(left()),
@@ -428,29 +432,23 @@ fn dock_arrows_visit_each_empty_section_in_order_both_directions() {
         },
         HeadlessStep::Key(escape()),
         HeadlessStep::WaitMs(100),
-        // Left from the heartbeats section lands on the subagents section —
-        // the reverse walk's last stop before the row's first section.
         HeadlessStep::Key(left()),
         HeadlessStep::WaitMs(100),
-        // Left from the subagents selection no longer wraps to the
-        // row's last section: it opens the scoped agents view (the
-        // operator's 2026-09-28 ask), the run hands the pane to the
-        // agents surface, and the plan ends there.
+        // Left from the subagents selection opens the scoped agents view (the operator's 2026-09-28
+        // ask); the plan ends on the agents surface.
         HeadlessStep::Key(left()),
         HeadlessStep::WaitMs(300),
     ];
     let outcome = run_plan(steps, None, Some(live_goal()));
     let all = outcome.frames.join("\n");
-    // The dock row itself: every section renders, empty ones included,
-    // with its live count.
+
     assert!(
         all.contains(
             " \u{25c6} 0 subagents  \u{b7}  \u{25f7} 0 heartbeats  \u{b7}  \u{25b8} 0 shells  \u{b7}  Pursuing goal (0s)"
         ),
         "the dock renders every section with its zero count:\n{all}"
     );
-    // Entering an empty section opens its view, and the empty state is
-    // the pane's own grammar row.
+
     assert!(
         all.contains("No running or paused heartbeats"),
         "the empty heartbeats section opens its view's empty state:\n{all}"
@@ -459,30 +457,21 @@ fn dock_arrows_visit_each_empty_section_in_order_both_directions() {
         all.contains("No background commands"),
         "the empty shells section opens its view's empty state:\n{all}"
     );
-    // The left handoff from the subagents section reached the scoped
-    // agents view (the subagents section's destination).
+
     assert!(
         outcome.return_to_agents_view,
         "left from the subagents selection hands the pane to the agents view"
     );
 }
 
-/// The same traversal with a section carrying rows: the heartbeats
-/// section lists its heartbeat and the arrows take the identical press
-/// count in the identical order — filling a section never moves another.
-/// The panel-exit ruling (2026-09-26) keeps the dock focused on the
-/// closed section's own item, so the walk needs no re-grab press
-/// between the sections.
+/// Filling a section never moves another (panel-exit ruling 2026-09-26 keeps the dock focused).
 #[test]
 fn dock_arrows_visit_the_same_sections_when_one_has_rows() {
     let steps = vec![
-        // The dock row shows the filled section's live count beside the
-        // other sections' zeros.
         HeadlessStep::WaitRender {
             needle: "\u{25f7} 1 heartbeat".to_string(),
             timeout_ms: 5_000,
         },
-        // The identical right-walk: one press to the heartbeats section.
         HeadlessStep::Key(alt_a()),
         HeadlessStep::WaitMs(100),
         HeadlessStep::Key(right()),
@@ -494,8 +483,6 @@ fn dock_arrows_visit_the_same_sections_when_one_has_rows() {
         },
         HeadlessStep::Key(escape()),
         HeadlessStep::WaitMs(100),
-        // The second press: the empty shells section — the row-bearing
-        // section never shifts the cycle.
         HeadlessStep::Key(right()),
         HeadlessStep::WaitMs(100),
         HeadlessStep::Key(enter()),
@@ -505,7 +492,6 @@ fn dock_arrows_visit_the_same_sections_when_one_has_rows() {
         },
         HeadlessStep::Key(escape()),
         HeadlessStep::WaitMs(100),
-        // The third press: the goal section.
         HeadlessStep::Key(right()),
         HeadlessStep::WaitMs(100),
         HeadlessStep::Key(enter()),
@@ -515,8 +501,6 @@ fn dock_arrows_visit_the_same_sections_when_one_has_rows() {
         },
         HeadlessStep::Key(escape()),
         HeadlessStep::WaitMs(100),
-        // The identical left-walk: two presses back to the row-bearing
-        // heartbeats section.
         HeadlessStep::Key(left()),
         HeadlessStep::WaitMs(100),
         HeadlessStep::Key(left()),
@@ -544,30 +528,19 @@ fn dock_arrows_visit_the_same_sections_when_one_has_rows() {
     assert!(!outcome.return_to_agents_view);
 }
 
-/// Left from the subagents selection opens the agents view (the
-/// operator's 2026-09-28 ask, reported as "right now nothing
-/// happens"): with the dock focused and the selection on the subagents
-/// section — its landing spot — one left press takes the same route as
-/// Enter and clicking the group (the scoped agents view handoff), so
-/// the pane leaves the session for the agents surface. The TS dock has
-/// no left/right handling at all (`subagent-summary-line.ts` handles
-/// confirm/cancel only), so this is the documented Rust divergence;
-/// the editor's `agents back` (left on an empty draft) is the same
-/// muscle-memory rule on the adjacent surface.
+/// Left from the subagents selection opens the agents view (the operator's 2026-09-28 ask): the TS
+/// dock has no left/right handling at all, so this is the documented Rust divergence; the editor's
+/// `agents back` is the same rule on the adjacent surface.
 #[test]
 fn left_from_the_subagents_selection_opens_the_agents_view() {
     let steps = vec![
-        // The goal row adds the goal section; the other three sections
-        // render their zero counts.
         HeadlessStep::WaitRender {
             needle: "Pursuing goal (0s)".to_string(),
             timeout_ms: 5_000,
         },
-        // Focus the dock: the selection starts on the subagents
-        // section.
+        // The selection starts on the subagents section.
         HeadlessStep::Key(alt_a()),
         HeadlessStep::WaitMs(100),
-        // The operator's left: one press, the agents view.
         HeadlessStep::Key(left()),
         HeadlessStep::WaitMs(300),
     ];
@@ -583,11 +556,8 @@ fn left_from_the_subagents_selection_opens_the_agents_view() {
     );
 }
 
-/// The all-zero dock (the operator's 2026-09-28 directive): with no
-/// subagents, heartbeats, shells, or goal, the dock row still renders
-/// its zero counts, alt+a takes the focus, and Enter on the Subagents
-/// group opens the scoped agents view — whose empty roster is the
-/// view's own `No sessions yet.` state.
+/// The all-zero dock (the operator's 2026-09-28 directive): the dock row still renders zero
+/// counts, and Enter on the Subagents group opens the scoped agents view's empty roster.
 #[test]
 fn an_all_zero_dock_renders_and_opens_the_empty_scoped_agents_view() {
     let steps = vec![
@@ -619,5 +589,173 @@ fn an_all_zero_dock_renders_and_opens_the_empty_scoped_agents_view() {
             active_session_id: Some("s1".to_string()),
             session_name: Some("dock arrows session".to_string()),
         })
+    );
+}
+
+/// The attached session's own roster row: the family root the title cost bills.
+fn parent_row() -> Value {
+    json!({
+        "agentId": "s1",
+        "status": "idle",
+        "summary": {
+            "sessionId": "sess-1",
+            "activeSessionId": "s1",
+            "sessionFile": "/tmp/sess-1.jsonl",
+            "lifecycle": "live",
+            "runtimeKind": "top-level",
+        },
+    })
+}
+
+/// One direct subagent of the attached session: the dock's running count and the family cost.
+fn child_row(id: &str, status: &str, cost: f64) -> Value {
+    json!({
+        "agentId": id,
+        "status": status,
+        "summary": {
+            "sessionId": format!("{id}-sess"),
+            "activeSessionId": format!("{id}-live"),
+            "sessionFile": format!("/tmp/{id}.jsonl"),
+            "lifecycle": "live",
+            "runtimeKind": "subagent",
+            "parentActiveSessionId": "s1",
+            "usage": { "cost": cost },
+        },
+    })
+}
+
+/// One `roster_update` push (the supervisor's live roster deltas).
+fn roster_push(changed: &[Value]) -> Value {
+    json!({ "type": "roster_update", "changed": changed, "removed": [], "resync": false })
+}
+
+/// The `roster_subscribe` snapshot reply's data object.
+fn roster_snapshot(rows: &[Value]) -> Value {
+    json!({ "roster": rows })
+}
+
+/// One `goal_update` session event that starts pursuing a goal.
+fn goal_event_push(seconds: u64) -> Value {
+    json!({
+        "type": "session_event",
+        "activeSessionId": "s1",
+        "event": {
+            "type": "goal_update",
+            "goal": {
+                "active": true,
+                "status": "active",
+                "goalId": "g-dock",
+                "objective": "ship the event-driven dock",
+                "tokensUsed": 0,
+                "timeUsedSeconds": seconds,
+                "continuationsUsed": 0,
+            },
+        },
+    })
+}
+
+/// The dock's event-driven update contract, pinned ahead of the run loop's per-wake recompute
+/// removal: a `roster_update` push alone repaints the running count and the title's family cost.
+#[test]
+fn a_roster_push_alone_remounts_the_dock_count_and_the_title_cost() {
+    let steps = vec![
+        HeadlessStep::WaitRender {
+            needle: "\u{25c6} 1 subagents".to_string(),
+            timeout_ms: 5_000,
+        },
+        HeadlessStep::WaitRender {
+            needle: "$0.42".to_string(),
+            timeout_ms: 5_000,
+        },
+    ];
+    let pushes = vec![roster_push(&[
+        parent_row(),
+        child_row("c1", "running", 0.42),
+    ])];
+    let outcome = run_plan_with_roster(steps, None, None, Vec::new(), pushes);
+    let last = outcome.frames.last().cloned().unwrap_or_default();
+    assert!(
+        last.contains("\u{25c6} 1 subagents") && last.contains("$0.42"),
+        "the roster push repainted the dock's running count and the title's family cost:\n{}",
+        outcome.frames.join("\n")
+    );
+}
+
+/// A `goal_update` event alone mounts the dock's goal row.
+#[test]
+fn b_a_goal_update_alone_mounts_the_dock_goal_row() {
+    let steps = vec![HeadlessStep::WaitRender {
+        needle: "shells  \u{b7}  Pursuing goal (12s)".to_string(),
+        timeout_ms: 5_000,
+    }];
+    let pushes = vec![goal_event_push(12)];
+    let outcome = run_plan_with_roster(steps, None, None, Vec::new(), pushes);
+    let last = outcome.frames.last().cloned().unwrap_or_default();
+    assert!(
+        last.contains("shells  \u{b7}  Pursuing goal (12s)"),
+        "the goal update mounted the dock's goal row:\n{}",
+        outcome.frames.join("\n")
+    );
+}
+
+/// A child's settle — the roster push flipping it running to idle — drops the dock's running count
+/// on its own event.
+#[test]
+fn c_a_child_settle_alone_drops_the_dock_running_count() {
+    let steps = vec![HeadlessStep::WaitRender {
+        needle: "\u{25c6} 0 subagents".to_string(),
+        timeout_ms: 5_000,
+    }];
+    let roster = vec![roster_snapshot(&[
+        parent_row(),
+        child_row("c1", "running", 0.42),
+    ])];
+    let pushes = vec![roster_push(&[child_row("c1", "idle", 0.42)])];
+    let outcome = run_plan_with_roster(steps, None, None, roster, pushes);
+    let last = outcome.frames.last().cloned().unwrap_or_default();
+    assert!(
+        last.contains("\u{25c6} 0 subagents"),
+        "the settle push dropped the dock's running count:\n{}",
+        outcome.frames.join("\n")
+    );
+}
+
+/// The attach fold: the `roster_subscribe` snapshot's running counts mount in the open's FIRST
+/// frame, and a session switch's fresh snapshot re-mounts them in the switch's first rebuilt
+/// frame — the counts follow the newly attached session.
+#[test]
+fn d_the_attach_mounts_the_snapshot_counts_in_its_first_frame_and_a_switch_follows() {
+    let steps = vec![
+        HeadlessStep::WaitRender {
+            needle: "\u{25c6} 2 subagents".to_string(),
+            timeout_ms: 5_000,
+        },
+        HeadlessStep::Submit("/new".to_string()),
+        HeadlessStep::WaitRender {
+            needle: "\u{25c6} 1 subagents".to_string(),
+            timeout_ms: 5_000,
+        },
+    ];
+    let roster = vec![
+        roster_snapshot(&[
+            parent_row(),
+            child_row("c1", "running", 0.42),
+            child_row("c2", "running", 0.1),
+        ]),
+        roster_snapshot(&[parent_row(), child_row("c1", "running", 0.42)]),
+    ];
+    let outcome = run_plan_with_roster(steps, None, None, roster, Vec::new());
+    let first_count = outcome
+        .frames
+        .iter()
+        .position(|frame| frame.contains("\u{25c6} 1 subagents"));
+    let first_note = outcome
+        .frames
+        .iter()
+        .position(|frame| frame.contains("started session s1"));
+    assert!(
+        matches!((first_count, first_note), (Some(count), Some(note)) if count <= note),
+        "the switch's first rebuilt frame carries the new snapshot's counts:\n{}",
+        outcome.frames.join("\n")
     );
 }

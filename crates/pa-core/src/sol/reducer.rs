@@ -178,7 +178,7 @@ pub struct ToolCallOutcome<'a> {
 /// The text block of an `ipython` result (exactly one text block; images
 /// and other blocks ride along untouched).
 fn reducible_body<'a>(outcome: &ToolCallOutcome<'a>) -> Option<(&'a str, usize, &'a str)> {
-    if outcome.tool_name != "ipython" {
+    if outcome.tool_name != pa_types::ai::PYTHON_TOOL_NAME {
         return None;
     }
     let code = outcome.args.get("code").and_then(Value::as_str)?;
