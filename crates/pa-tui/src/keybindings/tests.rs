@@ -18,6 +18,7 @@ fn defaults_match_ts() {
     assert!(kb.matches("ctrl+o", "app.tools.expand"));
     assert!(kb.matches("escape", "app.input.clear"));
     assert!(kb.matches("ctrl+shift+down", "tui.viewport.follow"));
+    assert!(kb.matches("ctrl+f", "tui.transcript.search"));
     assert!(kb.matches("shift+alt+up", "tui.viewport.top"));
     assert!(kb.matches("ctrl+w", "tui.editor.deleteWordBackward"));
     assert!(kb.matches("alt+backspace", "tui.editor.deleteWordBackward"));

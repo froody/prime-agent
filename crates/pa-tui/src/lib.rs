@@ -111,6 +111,7 @@ pub mod theme;
 pub mod toast;
 pub mod tool_card;
 pub mod traces;
+pub mod transcript_search;
 pub mod tree_display;
 pub mod tree_list;
 pub mod tree_nodes;

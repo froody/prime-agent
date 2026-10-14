@@ -88,7 +88,7 @@ pub(crate) fn highlight_line(line: &Line, from: usize, to: usize) -> Line {
 }
 
 /// Plain text of a rendered row: styling, OSC zone markers, and hyperlinks stripped, spans joined.
-fn row_text(line: &[Span]) -> String {
+pub(crate) fn row_text(line: &[Span]) -> String {
     let mut stripped = line.to_vec();
     crate::osc133::strip(&mut stripped);
     crate::hyperlinks::strip_osc8(&mut stripped);
