@@ -349,6 +349,12 @@ impl SessionUi {
     /// an open `/model` picker pastes into its search field; otherwise the
     /// editor takes it.
     pub(crate) fn handle_paste(&mut self, text: &str, view: &mut AgentView) {
+        if let Some(search) = view.transcript_search.as_mut() {
+            search.paste(text);
+            view.update_transcript_search();
+            self.dirty = true;
+            return;
+        }
         if let Some(picker) = view.model_picker.as_mut() {
             picker.paste(text);
             self.dirty = true;
@@ -368,6 +374,64 @@ impl SessionUi {
             return;
         }
         let _ = view.editor.handle_paste(text);
+    }
+
+    fn handle_transcript_search_key(&mut self, key: KeyEvent, view: &mut AgentView) -> Result<()> {
+        let Some(id) = key_event_to_id(&key) else {
+            return Ok(());
+        };
+        let (is_cancel, is_confirm, is_prev, is_search, is_page_up, is_page_down) = {
+            let kb = view.editor.keybindings();
+            (
+                id == "escape" || kb.matches(&id, "tui.select.cancel"),
+                id == "enter"
+                    || id == "down"
+                    || id == "ctrl+n"
+                    || kb.matches(&id, "tui.select.confirm"),
+                id == "shift+enter" || id == "up" || id == "ctrl+p",
+                kb.matches(&id, "tui.transcript.search"),
+                kb.matches(&id, "tui.viewport.pageUp"),
+                kb.matches(&id, "tui.viewport.pageDown"),
+            )
+        };
+
+        if is_cancel {
+            view.close_transcript_search(false);
+            self.dirty = true;
+            return Ok(());
+        }
+
+        if is_confirm || is_search {
+            view.transcript_search_next();
+            self.dirty = true;
+            return Ok(());
+        }
+
+        if is_prev {
+            view.transcript_search_prev();
+            self.dirty = true;
+            return Ok(());
+        }
+
+        if is_page_up {
+            view.scroll_by(-(view.page_size() as isize));
+            self.dirty = true;
+            return Ok(());
+        }
+
+        if is_page_down {
+            view.scroll_by(view.page_size() as isize);
+            self.dirty = true;
+            return Ok(());
+        }
+
+        let kb = view.editor.keybindings().clone();
+        if let Some(search) = view.transcript_search.as_mut() {
+            search.handle_key(&id, &kb);
+        }
+        view.update_transcript_search();
+        self.dirty = true;
+        Ok(())
     }
 
     /// One key press while the `/effort` picker is open: Esc/Ctrl+C close
@@ -418,6 +482,9 @@ impl SessionUi {
         // Escape presses converges to the inert empty state.
         if key_event_to_id(&key).is_some_and(|id| id != "escape") {
             self.escape_tree_shortcut_spent = false;
+        }
+        if view.transcript_search.is_some() {
+            return self.handle_transcript_search_key(key, view);
         }
         // The `/model` picker owns the frame while open: every key goes to
         // it, before the editor, the viewport keys, or Ctrl+C (which
@@ -498,13 +565,14 @@ impl SessionUi {
         // `keybindings.json` override moves both the handler and the hint.
         // Transcript viewport keys (TS tui.ts consumes them before the
         // editor in fullscreen): page scroll, top, follow.
-        let (page_up, page_down, to_top, follow) = {
+        let (page_up, page_down, to_top, follow, search) = {
             let kb = view.editor.keybindings();
             (
                 kb.matches(&id, "tui.viewport.pageUp"),
                 kb.matches(&id, "tui.viewport.pageDown"),
                 kb.matches(&id, "tui.viewport.top"),
                 kb.matches(&id, "tui.viewport.follow"),
+                kb.matches(&id, "tui.transcript.search"),
             )
         };
         if page_up {
@@ -533,6 +601,11 @@ impl SessionUi {
         if follow {
             view.scroll_to_bottom();
             self.track_scroll("follow", view.is_following());
+            self.dirty = true;
+            return Ok(());
+        }
+        if search {
+            view.open_transcript_search();
             self.dirty = true;
             return Ok(());
         }

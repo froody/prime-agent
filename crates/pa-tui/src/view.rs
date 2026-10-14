@@ -139,6 +139,9 @@ pub struct AgentView {
     /// The `/settings` inline menu (TS `SettingsSelectorComponent`):
     /// mounted in the editor dock like the tree and fork selectors.
     pub settings_menu: Option<crate::settings_menu::SettingsMenu>,
+    /// The transcript search session: while set, the search input dock
+    /// replaces the editor and highlights matches in the transcript window.
+    pub transcript_search: Option<crate::transcript_search::TranscriptSearch>,
     /// The read-only info panel (the operator's 2026-09-26 directive:
     /// the `/context`-family client info displays render as the docked
     /// popup panel instead of flooding the transcript): while set, it
@@ -366,6 +369,7 @@ impl AgentView {
             reload_box: None,
             side_pane: None,
             settings_menu: None,
+            transcript_search: None,
             info_panel: None,
             show_images: true,
             show_hardware_cursor: false,
@@ -757,6 +761,101 @@ impl AgentView {
     pub fn render_transcript(&mut self, width: usize) -> Vec<Line> {
         let layout = self.layout_pass(width);
         self.transcript_window(&layout, 0, usize::MAX)
+    }
+
+    /// Open transcript search, capturing current scroll position.
+    pub fn open_transcript_search(&mut self) {
+        let lines = self.render_transcript(self.layout_width.max(80));
+        let mut search = crate::transcript_search::TranscriptSearch::new(self.scroll_top);
+        search.recompute_matches(&lines, self.scroll_top);
+        self.transcript_search = Some(search);
+        self.jump_to_current_match();
+    }
+
+    /// Close transcript search, optionally restoring the initial scroll position.
+    pub fn close_transcript_search(&mut self, restore: bool) {
+        if restore {
+            if let Some(search) = &self.transcript_search {
+                self.scroll_top = search.initial_scroll_top;
+            }
+        }
+        self.transcript_search = None;
+    }
+
+    /// Advance to the next match.
+    pub fn transcript_search_next(&mut self) {
+        if let Some(search) = self.transcript_search.as_mut() {
+            search.next_match();
+        }
+        self.jump_to_current_match();
+    }
+
+    /// Move to the previous match.
+    pub fn transcript_search_prev(&mut self) {
+        if let Some(search) = self.transcript_search.as_mut() {
+            search.prev_match();
+        }
+        self.jump_to_current_match();
+    }
+
+    /// Recompute matches after query edit.
+    pub fn update_transcript_search(&mut self) {
+        let lines = self.render_transcript(self.layout_width.max(80));
+        if let Some(search) = self.transcript_search.as_mut() {
+            search.recompute_matches(&lines, self.scroll_top);
+        }
+        self.jump_to_current_match();
+    }
+
+    /// Jump viewport to current match.
+    pub fn jump_to_current_match(&mut self) {
+        let Some(search) = &self.transcript_search else {
+            return;
+        };
+        let Some(curr_idx) = search.current_match else {
+            return;
+        };
+        let Some(loc) = search.matches.get(curr_idx) else {
+            return;
+        };
+        let window_height = self.page_size();
+        let target = loc.line_index.saturating_sub(window_height / 3);
+        self.scroll_top = target.min(self.last_max_scroll);
+        self.following = false;
+    }
+
+    /// Highlight active and inactive search matches on visible rows.
+    pub(crate) fn apply_search_highlights(&self, rows: &mut [Line], start: usize) {
+        let Some(search) = &self.transcript_search else {
+            return;
+        };
+        if search.matches.is_empty() {
+            return;
+        }
+        let current_match_idx = search.current_match;
+        for (offset, line) in rows.iter_mut().enumerate() {
+            let abs_line = start + offset;
+            let mut matches_on_line: Vec<(usize, &crate::transcript_search::MatchLocation)> =
+                search
+                    .matches
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, m)| m.line_index == abs_line)
+                    .collect();
+            if matches_on_line.is_empty() {
+                continue;
+            }
+            matches_on_line.reverse();
+            for (idx, m) in matches_on_line {
+                let is_current = current_match_idx == Some(idx);
+                *line = crate::transcript_search::highlight_search_match(
+                    line,
+                    m.col_start,
+                    m.col_end,
+                    is_current,
+                );
+            }
+        }
     }
 }
 

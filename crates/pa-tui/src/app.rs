@@ -208,15 +208,36 @@ fn handle_key(
     let Some(id) = key_event_to_id(&key) else {
         return;
     };
+    if view.transcript_search.is_some() {
+        if id == "escape" {
+            view.close_transcript_search(false);
+            return;
+        }
+        if id == "enter" || id == "down" || id == "ctrl+n" {
+            view.transcript_search_next();
+            return;
+        }
+        if id == "shift+enter" || id == "up" || id == "ctrl+p" {
+            view.transcript_search_prev();
+            return;
+        }
+        let kb = view.editor.keybindings().clone();
+        if let Some(search) = view.transcript_search.as_mut() {
+            search.handle_key(&id, &kb);
+        }
+        view.update_transcript_search();
+        return;
+    }
     // Transcript viewport keys (TS tui.ts consumes them before the editor
     // in fullscreen): page scroll, top, follow.
-    let (page_up, page_down, to_top, follow) = {
+    let (page_up, page_down, to_top, follow, search) = {
         let kb = view.editor.keybindings();
         (
             kb.matches(&id, "tui.viewport.pageUp"),
             kb.matches(&id, "tui.viewport.pageDown"),
             kb.matches(&id, "tui.viewport.top"),
             kb.matches(&id, "tui.viewport.follow"),
+            kb.matches(&id, "tui.transcript.search"),
         )
     };
     if page_up {
@@ -233,6 +254,10 @@ fn handle_key(
     }
     if follow {
         view.scroll_to_bottom();
+        return;
+    }
+    if search {
+        view.open_transcript_search();
         return;
     }
     let is_paste_marker_key = false;

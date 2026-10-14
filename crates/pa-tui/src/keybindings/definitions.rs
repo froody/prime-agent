@@ -15,7 +15,7 @@ pub const TUI_KEYBINDINGS: &[(&str, KeybindingDefinition)] = &[
     ),
     (
         "tui.editor.cursorRight",
-        def!(&["right", "ctrl+f"], "Move cursor right", scope "editor"),
+        def!(&["right"], "Move cursor right", scope "editor"),
     ),
     (
         "tui.editor.cursorWordLeft",
@@ -262,6 +262,10 @@ pub const TUI_KEYBINDINGS: &[(&str, KeybindingDefinition)] = &[
             &["ctrl+shift+down"],
             "Scroll to bottom and follow output (fullscreen)"
         ),
+    ),
+    (
+        "tui.transcript.search",
+        def!(&["ctrl+f"], "Search transcript"),
     ),
     ("tui.select.up", def!(&["up"], "Move selection up")),
     ("tui.select.down", def!(&["down"], "Move selection down")),

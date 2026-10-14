@@ -120,7 +120,15 @@ impl AgentView {
         // The tree and fork selectors mount in the editor container (TS
         // `showSelector`): an auto-height pane over the dock's rows with the
         // transcript above it.
-        let selector_dock: Option<Vec<Line>> = if self.tree_selector.is_some()
+        let selector_dock: Option<Vec<Line>> = if let Some(search) = self.transcript_search.as_ref()
+        {
+            let mut dock = render_prompt_context(&self.detail_label(), &self.theme, width);
+            let search_lines = search.render(&self.theme, width, self.editor.keybindings());
+            let cursor_col = search.cursor_col();
+            self.dock_cursor = Some((dock.len() + 1, cursor_col));
+            dock.extend(search_lines);
+            Some(dock)
+        } else if self.tree_selector.is_some()
             || self.fork_selector.is_some()
             || self.share_loader.is_some()
             || self.confirm.is_some()
@@ -201,7 +209,8 @@ impl AgentView {
         self.window_rows = window_height;
         // The selection restyle diff: only the rows the selection change
         // touched re-style; the rest reuse the cached styled rows.
-        let window_rows = self.selection_styled_window(window_rows, start);
+        let mut window_rows = self.selection_styled_window(window_rows, start);
+        self.apply_search_highlights(&mut window_rows, start);
         let mut frame: Vec<Line> = Vec::with_capacity(height);
         frame.push(pad_row(top, width));
         for line in window_rows {

@@ -74,6 +74,7 @@ pub fn hotkeys_guide(kb: &KeybindingsManager) -> String {
     let viewport_page_down = key_display(kb, "tui.viewport.pageDown");
     let viewport_top = key_display(kb, "tui.viewport.top");
     let viewport_follow = key_display(kb, "tui.viewport.follow");
+    let transcript_search = key_display(kb, "tui.transcript.search");
     let suspend = key_display(kb, "app.suspend");
     let select_paragraph_up = key_display(kb, "tui.editor.selectParagraphUp");
     let select_paragraph_down = key_display(kb, "tui.editor.selectParagraphDown");
@@ -95,6 +96,7 @@ pub fn hotkeys_guide(kb: &KeybindingsManager) -> String {
 | `{jump_forward}` | Jump forward to character |
 | `{jump_backward}` | Jump backward to character |
 | `{page_up}` / `{page_down}` | Scroll by page |
+| `{transcript_search}` | Search transcript |
 
 **Editing**
 | Key | Action |
