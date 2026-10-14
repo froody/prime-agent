@@ -7,7 +7,7 @@
 //! exact bytes back from the archive path in `ipython`. Every failure is
 //! fail-open: the observation goes out unchanged.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -20,6 +20,11 @@ use super::{sha256_hex, utf16_len};
 pub const THRESHOLD_BYTES: usize = 10 * 1024;
 /// Provider requests that still carry the full payload before the placeholder takes over.
 pub const FULL_SENDS: usize = 2;
+/// Minimum provider requests between two placeholder switches. A switch
+/// rewrites an earlier message, which ends the provider's prefix-cache hit
+/// for everything after it, so due results are switched together in batches
+/// rather than one per request.
+pub const REPACK_INTERVAL: usize = 10;
 /// Placeholder excerpt budget, split evenly between head and tail, whole lines only.
 pub const PLACEHOLDER_EXCERPT_BYTES: usize = 1024;
 const CHARS_PER_TOKEN: usize = 4;
@@ -211,11 +216,23 @@ pub fn placeholder_for(observation: &Observation) -> String {
     .join("\n")
 }
 
-/// Per-session projection state: how often each observation has been sent.
+/// Per-session projection state.
+#[derive(Debug, Default)]
+struct PackState {
+    /// How often each observation has been sent.
+    sent_counts: HashMap<String, usize>,
+    /// Observations already projected as placeholders; they stay that way.
+    packed: HashSet<String>,
+    /// Projections made so far, and the one that last switched a placeholder.
+    requests: usize,
+    last_switch: Option<usize>,
+}
+
+/// Per-session projection state: send counts and the current placeholder set.
 #[derive(Debug)]
 pub struct ObservationPack {
     runtime_root: PathBuf,
-    sent_counts: Mutex<HashMap<String, usize>>,
+    state: Mutex<PackState>,
 }
 
 impl ObservationPack {
@@ -224,12 +241,14 @@ impl ObservationPack {
     pub fn new(runtime_root: PathBuf) -> Self {
         ObservationPack {
             runtime_root,
-            sent_counts: Mutex::new(HashMap::new()),
+            state: Mutex::new(PackState::default()),
         }
     }
 
     /// Project one provider request: large results past their full sends
-    /// become placeholders. A per-message failure keeps that message whole.
+    /// become placeholders, switched in batches at most once per
+    /// [`REPACK_INTERVAL`] requests. A per-message failure keeps that
+    /// message whole.
     ///
     /// # Panics
     ///
@@ -246,8 +265,14 @@ impl ObservationPack {
             }
         }
         let request = assistant_count + 1;
-        let mut sent_counts = self.sent_counts.lock().unwrap();
-        messages
+        let mut guard = self.state.lock().unwrap();
+        let state = &mut *guard;
+        state.requests += 1;
+        let may_switch = state
+            .last_switch
+            .is_none_or(|last| state.requests - last >= REPACK_INTERVAL);
+        let mut switched = false;
+        let projected = messages
             .into_iter()
             .enumerate()
             .map(|(index, message)| {
@@ -261,17 +286,23 @@ impl ObservationPack {
                     tracing::warn!(%error, "observation-pack fail-open");
                     return message;
                 }
-                let previous = *sent_counts
+                let previous = *state
+                    .sent_counts
                     .entry(observation.id.clone())
                     .or_insert(prior_assistant_counts[index]);
-                sent_counts.insert(observation.id.clone(), previous + 1);
-                if previous < FULL_SENDS {
+                state
+                    .sent_counts
+                    .insert(observation.id.clone(), previous + 1);
+                let packed = state.packed.contains(&observation.id)
+                    || (previous >= FULL_SENDS && may_switch);
+                if !packed {
                     self.ledger(&serde_json::json!({
                         "event": "full", "id": observation.id, "request": request,
                         "tool": observation.tool_name, "originalTokens": observation.tokens,
                     }));
                     return message;
                 }
+                switched |= state.packed.insert(observation.id.clone());
                 let placeholder = placeholder_for(&observation);
                 let removed = observation
                     .tokens
@@ -284,7 +315,11 @@ impl ObservationPack {
                 projected.content = vec![ToolResultContent::text(placeholder)];
                 AgentMessage::Standard(Message::ToolResult(projected))
             })
-            .collect()
+            .collect();
+        if switched {
+            state.last_switch = Some(state.requests);
+        }
+        projected
     }
 
     /// Append one JSONL row to the pack's ledger (best effort).
