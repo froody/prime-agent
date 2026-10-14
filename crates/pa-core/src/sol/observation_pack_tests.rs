@@ -91,6 +91,37 @@ fn counts_sends_from_the_assistant_turns_that_follow_a_result_on_resume() {
 }
 
 #[test]
+fn a_result_that_becomes_due_soon_after_a_switch_waits_for_the_next_batch() {
+    let dir = tempfile::tempdir().unwrap();
+    let pack = ObservationPack::new(dir.path().to_path_buf());
+    let first = message(tool_result(&large("first\n")));
+    let second = message(tool_result(&large("second\n")));
+    let history = vec![
+        first,
+        assistant(),
+        assistant(),
+        second,
+        assistant(),
+        assistant(),
+    ];
+    let packed = |projected: &[AgentMessage], index: usize| {
+        text_of(&projected[index]).starts_with("[large tool result replaced")
+    };
+
+    let projected = pack.project(history[..3].to_vec());
+    assert!(packed(&projected, 0));
+    for _ in 1..REPACK_INTERVAL {
+        let projected = pack.project(history.clone());
+        assert_eq!(
+            (packed(&projected, 0), packed(&projected, 3)),
+            (true, false)
+        );
+    }
+    let projected = pack.project(history);
+    assert_eq!((packed(&projected, 0), packed(&projected, 3)), (true, true));
+}
+
+#[test]
 fn passes_through_errors_mixed_content_and_small_results() {
     let mut error = tool_result(&large("x"));
     error.is_error = true;
