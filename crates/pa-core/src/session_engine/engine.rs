@@ -273,6 +273,11 @@ pub async fn create_session(mut config: SessionEngineConfig) -> anyhow::Result<S
     // Captured before `settings` moves into the resource loader: the
     // compaction budget and the auto-refine gates.
     let compaction_settings = settings.settings().compaction.clone().unwrap_or_default();
+    let repack_intervals = settings
+        .settings()
+        .observation_pack_repack_intervals
+        .clone()
+        .unwrap_or_default();
     let compaction_threshold_percent = settings.get_compaction_threshold_percent();
     let context_search_policy = settings.get_context_search_policy();
     let auto_refine_gates =
@@ -409,6 +414,7 @@ pub async fn create_session(mut config: SessionEngineConfig) -> anyhow::Result<S
         session_artifact_dir.as_deref(),
         &config.agent_dir,
         None,
+        repack_intervals,
     ));
     // Chisle (`chisle.json`): the restored mode entry wins over the
     // configured default; spill copies live under the artifact dir.

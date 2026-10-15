@@ -241,7 +241,7 @@ impl RequestTimingWiring {
 /// Exists to mark the turn's dispatch moment.
 #[must_use]
 pub fn pass_through_transform() -> TransformContextFn {
-    Arc::new(|messages, _signal| Box::pin(async move { Ok(messages) }))
+    Arc::new(|messages, _model, _signal| Box::pin(async move { Ok(messages) }))
 }
 
 /// Instruments the transform seam — the entry timestamp is the turn's
@@ -250,15 +250,15 @@ pub fn instrument_transform_context(
     wiring: Arc<RequestTimingWiring>,
     transform: TransformContextFn,
 ) -> TransformContextFn {
-    Arc::new(move |messages, signal| {
+    Arc::new(move |messages, model, signal| {
         let wiring = Arc::clone(&wiring);
-        let transform = Arc::clone(&transform);
+        let started_at = Instant::now();
+        let transformed = transform(messages, model, signal);
         Box::pin(async move {
             if !wiring.enabled() {
-                return transform(messages, signal).await;
+                return transformed.await;
             }
-            let started_at = Instant::now();
-            let result = transform(messages, signal).await?;
+            let result = transformed.await?;
             wiring.mark_dispatch(started_at);
             Ok(result)
         })

@@ -87,7 +87,7 @@ async fn stream_assistant_response_inner(
     let mut messages: Vec<AgentMessage> = context.messages.clone();
     if let Some(transform) = config.transform_context.as_ref() {
         messages = race_with_abort(
-            transform(messages, signal.cloned().unwrap_or_default()),
+            transform(messages, &config.model, signal.cloned().unwrap_or_default()),
             signal,
         )
         .await?;

@@ -25,10 +25,12 @@ pub type ConvertToLlmFn = Arc<
 >;
 
 /// AgentMessage-level transform applied before `convert_to_llm` (context
-/// pruning, external injection).
+/// pruning, external injection). It receives the model this request goes to,
+/// which can differ between requests of one session.
 pub type TransformContextFn = Arc<
     dyn Fn(
             Vec<AgentMessage>,
+            &Model,
             AbortSignal,
         ) -> crate::BoxFut<'static, anyhow::Result<Vec<AgentMessage>>>
         + Send
