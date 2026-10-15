@@ -6,7 +6,7 @@
 //! `sol-prime.json` in the agent dir turns on the Observation Pack (the
 //! loop's `transform_context`) and the Evidence-Preserving Reducer (the
 //! loop's `after_tool_call`, routed through the model registry to a faux
-//! custom provider). A scripted `ipython` tool returns a large pytest log.
+//! custom provider). A scripted `python_repl` tool returns a large pytest log.
 
 use std::sync::{Arc, Mutex};
 
@@ -33,17 +33,17 @@ fn pytest_log() -> String {
     )
 }
 
-/// An `ipython` stand-in returning the same pytest log for every cell.
+/// A `python_repl` stand-in returning the same pytest log for every cell.
 struct ScriptedIpython {
     parameters: serde_json::Value,
 }
 
 impl AgentTool for ScriptedIpython {
     fn name(&self) -> &'static str {
-        "ipython"
+        pa_types::ai::PYTHON_TOOL_NAME
     }
     fn description(&self) -> &'static str {
-        "scripted ipython"
+        "scripted python_repl"
     }
     fn parameters(&self) -> &serde_json::Value {
         &self.parameters
@@ -163,7 +163,11 @@ async fn a_sol_prime_config_reduces_test_logs_and_packs_large_results() {
         faux_assistant_message(
             vec![
                 faux_text("running"),
-                faux_tool_call("ipython", &json!({ "code": code }), Some(id)),
+                faux_tool_call(
+                    pa_types::ai::PYTHON_TOOL_NAME,
+                    &json!({ "code": code }),
+                    Some(id),
+                ),
             ],
             FauxAssistantMessageOptions {
                 stop_reason: Some(StopReason::ToolUse),
@@ -268,7 +272,7 @@ async fn a_sol_prime_config_reduces_test_logs_and_packs_large_results() {
             .is_ok_and(|text| text.contains("collecting ... ok") && text.contains("call-cat"))
     });
     assert!(persisted_full, "the stored tool result is never rewritten");
-    // Action Fusion classifies every ipython cell into the result details,
+    // Action Fusion classifies every python_repl cell into the result details,
     // alongside the reducer's receipt summary.
     let details: Vec<serde_json::Value> = entries
         .iter()
