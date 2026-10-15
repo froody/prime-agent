@@ -400,6 +400,10 @@ pub struct Settings {
     pub request_timing: Option<bool>,
     /// Rust-only `contextSearchPolicy`; unset is [`ContextSearchPolicy::Default`].
     pub context_search_policy: Option<ContextSearchPolicy>,
+    /// Rust-only `observationPackRepackIntervals`: `provider/model-id` to the
+    /// minimum provider requests between Observation Pack placeholder
+    /// switches. Unlisted models switch on every request.
+    pub observation_pack_repack_intervals: Option<std::collections::BTreeMap<String, usize>>,
     /// Unknown keys survive load/save round-trips (forward compatibility).
     #[serde(flatten, skip_serializing_if = "serde_json::Map::is_empty")]
     pub extra: serde_json::Map<String, serde_json::Value>,

@@ -3,7 +3,7 @@
 //!
 //! - [`observation_pack`]: large tool results become archive placeholders
 //!   after their first two provider requests (`transform_context` seam).
-//! - [`reducer`]: long `ipython` build/test logs become verified quote
+//! - [`reducer`]: long `python_repl` build/test logs become verified quote
 //!   receipts from a cheaper model (`after_tool_call` seam).
 //! - [`online_compact`]: cache economics that price a compaction at each
 //!   completed plan step.
@@ -20,6 +20,7 @@ pub mod observation_pack;
 pub mod online_compact;
 pub mod reducer;
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
@@ -58,17 +59,19 @@ impl SolSession {
     /// directory; without one (in-memory sessions) nothing is archived, so
     /// only Action Fusion can run. `reducer_call` overrides the registry
     /// model call (tests); `None` resolves the configured reducer model
-    /// through `agent_dir`'s registry.
+    /// through `agent_dir`'s registry. `repack_intervals` is the
+    /// `observationPackRepackIntervals` setting.
     #[must_use]
     pub fn new(
         config: &SolConfig,
         runtime_root: Option<&Path>,
         agent_dir: &Path,
         reducer_call: Option<ReducerCallFn>,
+        repack_intervals: BTreeMap<String, usize>,
     ) -> Self {
         let observation_pack = runtime_root
             .filter(|_| config.observation_pack)
-            .map(|root| ObservationPack::new(root.to_path_buf()));
+            .map(|root| ObservationPack::new(root.to_path_buf(), repack_intervals));
         let reducer = match (runtime_root, &config.evidence_preserving_reducer) {
             (Some(root), Some(target)) => {
                 let call = reducer_call.unwrap_or_else(|| {
@@ -106,13 +109,14 @@ impl SolSession {
             return inner;
         }
         let session = Arc::clone(self);
-        Arc::new(move |messages, signal| {
+        Arc::new(move |messages, model, signal| {
             let session = Arc::clone(&session);
-            let inner = Arc::clone(&inner);
+            let model = model.clone();
+            let inner = inner(messages, &model, signal);
             Box::pin(async move {
-                let messages = inner(messages, signal).await?;
+                let messages = inner.await?;
                 Ok(match &session.observation_pack {
-                    Some(pack) => pack.project(messages),
+                    Some(pack) => pack.project(messages, &model),
                     None => messages,
                 })
             })

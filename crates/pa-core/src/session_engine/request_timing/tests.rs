@@ -203,8 +203,15 @@ async fn run_timed_request(
         }),
     );
     let input = vec![AgentMessage::user("hello")];
-    let llm_messages =
-        convert(transform(input, pa_agent::abort::AbortSignal::default()).await?).await?;
+    let llm_messages = convert(
+        transform(
+            input,
+            &test_model(),
+            pa_agent::abort::AbortSignal::default(),
+        )
+        .await?,
+    )
+    .await?;
     let options = StreamRequestOptions {
         session_id: Some("sess-timing".to_string()),
         ..Default::default()

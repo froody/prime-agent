@@ -12,6 +12,21 @@ fn tool_result(body: &str) -> ToolResultMessage {
     }
 }
 
+fn model(id: &str) -> Model {
+    Model {
+        id: id.to_string(),
+        name: String::new(),
+        api: "openai-completions".to_string(),
+        provider: "litellm".to_string(),
+        base_url: String::new(),
+        reasoning: false,
+        cost: pa_agent::types::UsageCost::default(),
+        context_window: 0,
+        max_tokens: 0,
+        max_tokens_explicit: false,
+    }
+}
+
 fn message(result: ToolResultMessage) -> AgentMessage {
     AgentMessage::Standard(Message::ToolResult(result))
 }
@@ -54,10 +69,10 @@ fn field<'a>(placeholder: &'a str, name: &str) -> &'a str {
 #[test]
 fn sends_in_full_twice_then_a_stable_placeholder_whose_path_holds_the_original() {
     let dir = tempfile::tempdir().unwrap();
-    let pack = ObservationPack::new(dir.path().to_path_buf());
+    let pack = ObservationPack::new(dir.path().to_path_buf(), BTreeMap::new());
     let body = format!("head line\n{}tail line\n", large("middle \u{263e} line\n"));
     let sends: Vec<String> = (0..4)
-        .map(|_| text_of(&pack.project(vec![message(tool_result(&body))])[0]))
+        .map(|_| text_of(&pack.project(vec![message(tool_result(&body))], &model("bench"))[0]))
         .collect();
     assert_eq!(sends[0], body);
     assert_eq!(sends[1], body);
@@ -81,44 +96,51 @@ fn sends_in_full_twice_then_a_stable_placeholder_whose_path_holds_the_original()
 #[test]
 fn counts_sends_from_the_assistant_turns_that_follow_a_result_on_resume() {
     let dir = tempfile::tempdir().unwrap();
-    let pack = ObservationPack::new(dir.path().to_path_buf());
-    let projected = pack.project(vec![
-        message(tool_result(&large("resumed\n"))),
-        assistant(),
-        assistant(),
-    ]);
+    let pack = ObservationPack::new(dir.path().to_path_buf(), BTreeMap::new());
+    let projected = pack.project(
+        vec![
+            message(tool_result(&large("resumed\n"))),
+            assistant(),
+            assistant(),
+        ],
+        &model("bench"),
+    );
     assert!(text_of(&projected[0]).starts_with("[large tool result replaced"));
 }
 
 #[test]
-fn a_result_that_becomes_due_soon_after_a_switch_waits_for_the_next_batch() {
-    let dir = tempfile::tempdir().unwrap();
-    let pack = ObservationPack::new(dir.path().to_path_buf());
-    let first = message(tool_result(&large("first\n")));
-    let second = message(tool_result(&large("second\n")));
+fn a_due_result_waits_for_its_models_repack_interval_and_an_unlisted_model_switches_at_once() {
     let history = vec![
-        first,
+        message(tool_result(&large("first\n"))),
         assistant(),
         assistant(),
-        second,
+        message(tool_result(&large("second\n"))),
         assistant(),
         assistant(),
     ];
     let packed = |projected: &[AgentMessage], index: usize| {
         text_of(&projected[index]).starts_with("[large tool result replaced")
     };
+    let new_pack = |dir: &tempfile::TempDir| {
+        ObservationPack::new(
+            dir.path().to_path_buf(),
+            BTreeMap::from([("litellm/batched".to_string(), 3)]),
+        )
+    };
+    let batched = model("batched");
 
-    let projected = pack.project(history[..3].to_vec());
-    assert!(packed(&projected, 0));
-    for _ in 1..REPACK_INTERVAL {
-        let projected = pack.project(history.clone());
-        assert_eq!(
-            (packed(&projected, 0), packed(&projected, 3)),
-            (true, false)
-        );
-    }
-    let projected = pack.project(history);
-    assert_eq!((packed(&projected, 0), packed(&projected, 3)), (true, true));
+    let dir = tempfile::tempdir().unwrap();
+    let pack = new_pack(&dir);
+    assert!(packed(&pack.project(history[..3].to_vec(), &batched), 0));
+    let second_packed: Vec<bool> = (0..3)
+        .map(|_| packed(&pack.project(history.clone(), &batched), 3))
+        .collect();
+    assert_eq!(second_packed, [false, false, true]);
+
+    let dir = tempfile::tempdir().unwrap();
+    let pack = new_pack(&dir);
+    assert!(packed(&pack.project(history[..3].to_vec(), &batched), 0));
+    assert!(packed(&pack.project(history, &model("other")), 3));
 }
 
 #[test]
@@ -132,10 +154,13 @@ fn passes_through_errors_mixed_content_and_small_results() {
     }));
     for result in [error, mixed, tool_result("small")] {
         let dir = tempfile::tempdir().unwrap();
-        let pack = ObservationPack::new(dir.path().to_path_buf());
+        let pack = ObservationPack::new(dir.path().to_path_buf(), BTreeMap::new());
         let original = message(result);
         for _ in 0..3 {
-            assert_eq!(pack.project(vec![original.clone()]), vec![original.clone()]);
+            assert_eq!(
+                pack.project(vec![original.clone()], &model("bench")),
+                vec![original.clone()]
+            );
         }
     }
 }
@@ -147,11 +172,11 @@ fn fails_open_when_the_archive_directory_is_a_symlink() {
     let target = tempfile::tempdir().unwrap();
     std::fs::create_dir_all(dir.path().join("observation-pack")).unwrap();
     std::os::unix::fs::symlink(target.path(), dir.path().join("observation-pack/objects")).unwrap();
-    let pack = ObservationPack::new(dir.path().to_path_buf());
+    let pack = ObservationPack::new(dir.path().to_path_buf(), BTreeMap::new());
     let body = large("guarded\n");
     for _ in 0..3 {
         assert_eq!(
-            text_of(&pack.project(vec![message(tool_result(&body))])[0]),
+            text_of(&pack.project(vec![message(tool_result(&body))], &model("bench"))[0]),
             body
         );
     }

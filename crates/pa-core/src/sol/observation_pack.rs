@@ -4,15 +4,15 @@
 //!
 //! Only the projection handed to the provider changes (the loop's
 //! `transform_context` seam); session history stays intact. The model reads
-//! exact bytes back from the archive path in `ipython`. Every failure is
+//! exact bytes back from the archive path in `python_repl`. Every failure is
 //! fail-open: the observation goes out unchanged.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-use pa_agent::types::{AgentMessage, Message, ToolResultContent, ToolResultMessage};
+use pa_agent::types::{AgentMessage, Message, Model, ToolResultContent, ToolResultMessage};
 
 use super::{sha256_hex, utf16_len};
 
@@ -20,11 +20,9 @@ use super::{sha256_hex, utf16_len};
 pub const THRESHOLD_BYTES: usize = 10 * 1024;
 /// Provider requests that still carry the full payload before the placeholder takes over.
 pub const FULL_SENDS: usize = 2;
-/// Minimum provider requests between two placeholder switches. A switch
-/// rewrites an earlier message, which ends the provider's prefix-cache hit
-/// for everything after it, so due results are switched together in batches
-/// rather than one per request.
-pub const REPACK_INTERVAL: usize = 10;
+/// Placeholder switches happen at most once per this many provider requests
+/// for a model with no `observationPackRepackIntervals` entry: every request.
+pub const DEFAULT_REPACK_INTERVAL: usize = 1;
 /// Placeholder excerpt budget, split evenly between head and tail, whole lines only.
 pub const PLACEHOLDER_EXCERPT_BYTES: usize = 1024;
 const CHARS_PER_TOKEN: usize = 4;
@@ -232,29 +230,35 @@ struct PackState {
 #[derive(Debug)]
 pub struct ObservationPack {
     runtime_root: PathBuf,
+    repack_intervals: BTreeMap<String, usize>,
     state: Mutex<PackState>,
 }
 
 impl ObservationPack {
     /// A pack archiving under `<runtime_root>/observation-pack/`.
+    /// `repack_intervals` maps a `provider/model-id` selector to its
+    /// minimum requests between placeholder switches.
     #[must_use]
-    pub fn new(runtime_root: PathBuf) -> Self {
+    pub fn new(runtime_root: PathBuf, repack_intervals: BTreeMap<String, usize>) -> Self {
         ObservationPack {
             runtime_root,
+            repack_intervals,
             state: Mutex::new(PackState::default()),
         }
     }
 
-    /// Project one provider request: large results past their full sends
-    /// become placeholders, switched in batches at most once per
-    /// [`REPACK_INTERVAL`] requests. A per-message failure keeps that
-    /// message whole.
+    /// Project one provider request to `model`: large results past their
+    /// full sends become placeholders. A switch rewrites an earlier message,
+    /// and a provider whose cache only extends the previous request then
+    /// misses everything after the system prompt, so due results switch
+    /// together, at most once per the model's repack interval. A
+    /// per-message failure keeps that message whole.
     ///
     /// # Panics
     ///
     /// Panics if the send-count mutex is poisoned.
     #[must_use]
-    pub fn project(&self, messages: Vec<AgentMessage>) -> Vec<AgentMessage> {
+    pub fn project(&self, messages: Vec<AgentMessage>, model: &Model) -> Vec<AgentMessage> {
         // Requests each message already rode in: the assistant turns after it.
         let mut prior_assistant_counts = vec![0; messages.len()];
         let mut assistant_count = 0;
@@ -268,9 +272,14 @@ impl ObservationPack {
         let mut guard = self.state.lock().unwrap();
         let state = &mut *guard;
         state.requests += 1;
+        let repack_interval = self
+            .repack_intervals
+            .get(&format!("{}/{}", model.provider, model.id))
+            .copied()
+            .unwrap_or(DEFAULT_REPACK_INTERVAL);
         let may_switch = state
             .last_switch
-            .is_none_or(|last| state.requests - last >= REPACK_INTERVAL);
+            .is_none_or(|last| state.requests - last >= repack_interval);
         let mut switched = false;
         let projected = messages
             .into_iter()
