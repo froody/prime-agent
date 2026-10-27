@@ -31,6 +31,18 @@ pub trait ClientSettings: Send + Sync {
         anyhow::bail!("Web search settings are unavailable")
     }
 
+    /// Long prompt-cache retention for provider requests, off by default.
+    fn long_cache_retention(&self) -> bool {
+        false
+    }
+    /// Persist the long cache retention preference.
+    ///
+    /// # Errors
+    /// Returns an error if the settings store fails or is unavailable.
+    fn set_long_cache_retention(&self, _enabled: bool) -> Result<()> {
+        anyhow::bail!("Cache retention settings are unavailable")
+    }
+
     /// Automatic compaction percentage ceiling; output headroom may trigger earlier.
     fn compaction_threshold_percent(&self) -> f64;
     /// Persist the percentage globally.

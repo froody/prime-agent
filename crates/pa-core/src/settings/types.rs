@@ -328,6 +328,8 @@ pub struct Settings {
     pub auto_refine: Option<AutoRefineSettings>,
     /// Master switch for harness creation and context loading; unset preserves enabled behavior.
     pub harness_refinements: Option<bool>,
+    /// Rust-only `longCacheRetention`: request long prompt-cache retention; unset is off.
+    pub long_cache_retention: Option<bool>,
     pub agent_traces: Option<AgentTracesSettings>,
     pub factory: Option<FactorySettings>,
     pub telemetry: Option<TelemetrySettings>,

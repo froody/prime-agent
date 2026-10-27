@@ -307,6 +307,14 @@ pub fn settings_menu_rows(current: &SettingsCurrentValues) -> Vec<SettingsMenuRo
             submenu: Some(SettingsSubmenu::ServiceTier),
         },
         SettingsMenuRow {
+            id: "long-cache-retention",
+            label: "Long cache retention",
+            description: "Keep the provider prompt cache longer (Anthropic 1h, OpenAI 24h); cache writes cost more",
+            current: current.long_cache_retention.to_string(),
+            values: Some(bool_value()),
+            submenu: None,
+        },
+        SettingsMenuRow {
             id: "mermaid-rendering",
             label: "Mermaid diagrams",
             description: "Render Mermaid code blocks as Unicode diagrams",
@@ -374,6 +382,7 @@ pub struct SettingsCurrentValues {
     pub builtin_skills: bool,
     pub harness_refinements: bool,
     pub web_search_provider: String,
+    pub long_cache_retention: bool,
     pub hardware_cursor: bool,
     pub emoji_shortcodes: bool,
     pub editor_padding: u64,

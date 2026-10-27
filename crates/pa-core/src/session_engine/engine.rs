@@ -269,6 +269,7 @@ pub async fn create_session(mut config: SessionEngineConfig) -> anyhow::Result<S
     );
 
     let refinement_settings = settings.reopen();
+    let cache_retention_settings = settings.reopen();
     let service_tier_preference = settings.get_default_service_tier();
     // Captured before `settings` moves into the resource loader: the
     // compaction budget and the auto-refine gates.
@@ -732,7 +733,7 @@ pub async fn create_session(mut config: SessionEngineConfig) -> anyhow::Result<S
     // question keeps the pre-semantic fn, so its calls carry no id.
     let timing_stream_fn = super::request_timing::instrument_stream_fn(
         std::sync::Arc::clone(&request_timing_wiring),
-        stream_fn,
+        super::cache_retention::wrap_stream_fn(cache_retention_settings, stream_fn),
     );
     let side_question_stream_fn = std::sync::Arc::clone(&timing_stream_fn);
     let semantic_recorder = config.semantic_edges.take().map(|identity| {

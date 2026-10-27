@@ -137,6 +137,7 @@ async fn stream_assistant_response_inner(
         session_id: config.session_id.clone(),
         transport: config.transport,
         service_tier: config.service_tier,
+        cache_retention: None,
         api_key: resolved_api_key,
         signal: signal.cloned().unwrap_or_default(),
         // The TS loop config's `onPayload`/`onResponse` ride every stream

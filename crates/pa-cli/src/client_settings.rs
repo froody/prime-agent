@@ -69,6 +69,26 @@ impl ClientSettings for CliClientSettings {
         Ok(())
     }
 
+    fn long_cache_retention(&self) -> bool {
+        self.manager().get_long_cache_retention()
+    }
+
+    fn set_long_cache_retention(&self, enabled: bool) -> Result<()> {
+        let mut manager = self.manager();
+        manager.set_long_cache_retention(enabled)?;
+        // Adoption bookkeeping stays off the UI input/paint path.
+        if let Ok(runtime) = tokio::runtime::Handle::try_current() {
+            let agent_dir = self.agent_dir.clone();
+            runtime.spawn_blocking(move || {
+                let client = pa_core::session_engine::telemetry::build_client(&manager, &agent_dir);
+                let mut properties = pa_telemetry::Properties::new();
+                properties.set("enabled", serde_json::json!(enabled));
+                client.track("long cache retention changed", properties);
+            });
+        }
+        Ok(())
+    }
+
     fn compaction_threshold_percent(&self) -> f64 {
         self.manager().get_compaction_threshold_percent()
     }

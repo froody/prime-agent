@@ -233,6 +233,7 @@ impl SessionUi {
             values.builtin_skills = settings.enable_builtin_skills();
             values.harness_refinements = settings.harness_refinements();
             values.web_search_provider = settings.web_search_provider();
+            values.long_cache_retention = settings.long_cache_retention();
             values.hardware_cursor = settings.show_hardware_cursor();
             values.emoji_shortcodes = settings.emoji_shortcodes();
             values.editor_padding = settings.editor_padding_x();
@@ -382,6 +383,13 @@ impl SessionUi {
                 };
                 view.editor.set_autocomplete_skill_commands(skills);
                 self.dirty = true;
+            }
+            "long-cache-retention" => {
+                self.persist_bool_setting(
+                    |settings, enabled| settings.set_long_cache_retention(enabled),
+                    value,
+                    view,
+                );
             }
             "harness-refinements" => {
                 self.persist_bool_setting(

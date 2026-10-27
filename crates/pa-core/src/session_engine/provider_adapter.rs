@@ -264,7 +264,7 @@ pub fn stream_once(
             // session's Codex socket and its continuation) carries it through.
             transport: options.transport.as_ref().and_then(json_round_trip),
             service_tier,
-            cache_retention: None,
+            cache_retention: options.cache_retention.as_ref().and_then(json_round_trip),
             session_id: options.session_id.clone(),
             // The loop-level request hooks cross the crate boundary here: the payload
             // hook may replace the wire payload, the response hook observes headers.
@@ -1375,6 +1375,49 @@ mod tests {
         assert_eq!(
             *received.lock().unwrap(),
             vec![Some(pa_types::ai::Transport::Sse), None]
+        );
+        registration.unregister();
+    }
+
+    #[tokio::test]
+    async fn requested_cache_retention_reaches_the_provider() {
+        let registration =
+            pa_ai::faux::register_faux_provider(pa_ai::faux::RegisterFauxProviderOptions {
+                api: Some("requested-cache-retention-test".to_owned()),
+                ..Default::default()
+            });
+        let received = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let captured = received.clone();
+        let factory = pa_ai::faux::FauxResponseStep::Factory(Arc::new(move |_, options, _, _| {
+            captured
+                .lock()
+                .unwrap()
+                .push(options.and_then(|options| options.cache_retention));
+            Ok(pa_ai::faux::faux_assistant_text_message(
+                "ok",
+                pa_ai::faux::FauxAssistantMessageOptions::default(),
+            ))
+        }));
+        registration.set_responses(vec![factory.clone(), factory]);
+        let model = registration.get_model();
+        for cache_retention in [Some(pa_agent::types::CacheRetention::Long), None] {
+            let mut stream = stream_once(
+                &model,
+                None,
+                None,
+                None,
+                LlmContext::default(),
+                StreamRequestOptions {
+                    cache_retention,
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+            stream.result().await.unwrap();
+        }
+        assert_eq!(
+            *received.lock().unwrap(),
+            vec![Some(pa_types::ai::CacheRetention::Long), None]
         );
         registration.unregister();
     }

@@ -216,6 +216,18 @@ fn harness_refinements_persist_without_clobbering_other_settings() {
 }
 
 #[test]
+fn long_cache_retention_persists_without_clobbering_other_settings() {
+    let (storage, mut manager) = fixture(r#"{"theme":"light","future":{"keep":true}}"#);
+    assert!(!manager.get_long_cache_retention());
+    manager.set_long_cache_retention(true).unwrap();
+    assert!(manager.reopen().get_long_cache_retention());
+    assert_eq!(
+        document(storage.as_ref()),
+        json!({"theme":"light", "future":{"keep":true}, "longCacheRetention":true})
+    );
+}
+
+#[test]
 fn harness_refinements_ignore_project_overrides_and_resolve_global_wrong_types() {
     let dir = tempfile::tempdir().unwrap();
     let agent_dir = dir.path().join("agent");

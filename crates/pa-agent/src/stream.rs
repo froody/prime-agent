@@ -142,6 +142,8 @@ pub struct StreamRequestOptions {
     pub transport: Option<crate::types::Transport>,
     /// The requested provider service tier; `None` means no tier request.
     pub service_tier: Option<crate::types::ServiceTier>,
+    /// The requested prompt-cache retention; `None` leaves it to the provider default.
+    pub cache_retention: Option<crate::types::CacheRetention>,
     pub api_key: Option<String>,
     pub signal: crate::abort::AbortSignal,
     pub on_payload: Option<OnPayloadHook>,
@@ -160,6 +162,7 @@ impl std::fmt::Debug for StreamRequestOptions {
             .field("session_id", &self.session_id)
             .field("transport", &self.transport)
             .field("service_tier", &self.service_tier)
+            .field("cache_retention", &self.cache_retention)
             .field("api_key", &self.api_key.as_ref().map(|_| "<set>"))
             .field("signal", &self.signal)
             .field("on_payload", &self.on_payload.is_some())
@@ -178,6 +181,7 @@ impl Default for StreamRequestOptions {
             session_id: None,
             transport: None,
             service_tier: None,
+            cache_retention: None,
             api_key: None,
             signal: crate::abort::AbortSignal::never(),
             on_payload: None,

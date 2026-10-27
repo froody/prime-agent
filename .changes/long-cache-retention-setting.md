@@ -1,0 +1,1 @@
+- Add a **Long cache retention** toggle in `/settings` → **Models** (global `longCacheRetention`, default off). When on, provider requests ask for long prompt-cache retention (Anthropic 1h, OpenAI 24h) where the model supports it; cache writes cost more. A change applies to running sessions on their next request. `PI_CACHE_RETENTION=long` still works when the toggle is off.

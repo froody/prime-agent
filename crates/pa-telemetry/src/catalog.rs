@@ -1272,12 +1272,19 @@ const WEB_SEARCH_PROVIDER_CHANGED: EventRule = EventRule {
     )],
 };
 
+const LONG_CACHE_RETENTION_CHANGED: EventRule = EventRule {
+    name: "long cache retention changed",
+    since: 2,
+    properties: &[("enabled", required(boolean()))],
+};
+
 /// Every catalogued event, flattened.
 #[must_use]
 pub fn catalog() -> Vec<&'static EventRule> {
     let mut all: Vec<&'static EventRule> = vec![
         &HARNESS_REFINEMENTS_CHANGED,
         &WEB_SEARCH_PROVIDER_CHANGED,
+        &LONG_CACHE_RETENTION_CHANGED,
         &AGENT_STARTED,
         &AGENT_RUN_COMPLETED,
         &AGENT_SESSION_ENDED,

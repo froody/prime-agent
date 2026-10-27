@@ -35,6 +35,16 @@ pub enum ServiceTier {
     Priority,
 }
 
+/// The requested prompt-cache retention; the wire names match the shared
+/// AI package's (serde lowercase).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum CacheRetention {
+    None,
+    Short,
+    Long,
+}
+
 /// The requested provider transport (wire names match the shared AI
 /// package's). `None` leaves the choice to the provider.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

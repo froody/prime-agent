@@ -42,6 +42,21 @@ impl SettingsManager {
         self.save_global_scope(&["webSearchProvider"])
     }
 
+    /// Whether provider requests ask for long prompt-cache retention (default off).
+    #[must_use]
+    pub fn get_long_cache_retention(&self) -> bool {
+        self.settings().long_cache_retention.unwrap_or(false)
+    }
+
+    /// Persist the long cache retention preference to the global settings scope.
+    ///
+    /// # Errors
+    /// Returns an error when the global scope cannot be saved.
+    pub fn set_long_cache_retention(&mut self, enabled: bool) -> Result<()> {
+        self.global_mut().long_cache_retention = Some(enabled);
+        self.save_global_scope(&["longCacheRetention"])
+    }
+
     /// The percentage ceiling for automatic compaction (default 95%).
     #[must_use]
     pub fn get_compaction_threshold_percent(&self) -> f64 {

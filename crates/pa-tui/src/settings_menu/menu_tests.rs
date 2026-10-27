@@ -58,7 +58,12 @@ fn tabs_partition_the_settings_rows() {
             ),
             (
                 "Models",
-                vec!["thinking", "transport", "default-service-tier"]
+                vec![
+                    "thinking",
+                    "transport",
+                    "default-service-tier",
+                    "long-cache-retention"
+                ]
             ),
             (
                 "Display",
@@ -674,6 +679,29 @@ fn harness_refinement_row_cycles_both_values_in_the_agents_tab() {
         SettingsMenuAction::Change {
             id: "harness-refinements",
             value: "true".to_string()
+        }
+    );
+}
+
+#[test]
+fn long_cache_retention_row_cycles_both_values_in_the_models_tab() {
+    let mut menu = SettingsMenu::new(settings_menu_rows(&SettingsCurrentValues::default()));
+    menu.handle_key("2", &kb());
+    for key in ["c", "a", "c", "h", "e"] {
+        menu.handle_key(key, &kb());
+    }
+    assert_eq!(
+        menu.handle_key("right", &kb()),
+        SettingsMenuAction::Change {
+            id: "long-cache-retention",
+            value: "true".to_string()
+        }
+    );
+    assert_eq!(
+        menu.handle_key("left", &kb()),
+        SettingsMenuAction::Change {
+            id: "long-cache-retention",
+            value: "false".to_string()
         }
     );
 }
