@@ -120,10 +120,13 @@ success "Catalog assets generated at target/catalog-assets"
 
 # 4. Stage packaging layout
 step "Assembling release package layout"
-(cd "$REPO_ROOT" && python3 scripts/package_release.py --skip-build --catalog-assets target/catalog-assets)
+# A fresh out dir holds only this build's package; target/release-package keeps older versions.
+PACKAGE_DIR="${REPO_ROOT}/target/install-local-package"
+rm -rf "$PACKAGE_DIR"
+(cd "$REPO_ROOT" && python3 scripts/package_release.py --skip-build --catalog-assets target/catalog-assets --out-dir "$PACKAGE_DIR")
 
-STAGE_DIR="$(find "${REPO_ROOT}/target/release-package" -mindepth 1 -maxdepth 1 -type d -name "prime-agent-*" | head -n 1)"
-[ -n "$STAGE_DIR" ] && [ -d "$STAGE_DIR" ] || error "Could not locate staged package directory under target/release-package"
+STAGE_DIR="$(find "$PACKAGE_DIR" -mindepth 1 -maxdepth 1 -type d -name "prime-agent-*")"
+[ -n "$STAGE_DIR" ] && [ -d "$STAGE_DIR" ] || error "Could not locate staged package directory under ${PACKAGE_DIR}"
 [ -x "${STAGE_DIR}/prime-agent" ] || error "Staged directory missing executable prime-agent"
 success "Staged release payload in $(basename "$STAGE_DIR")"
 
