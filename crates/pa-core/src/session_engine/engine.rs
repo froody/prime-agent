@@ -24,6 +24,8 @@ const MCP_SETTLE_PER_SERVER_TIMEOUT_MS: u64 = 10_000;
 
 /// Everything needed to assemble a session.
 #[derive(Default)]
+// Independent host switches, each set by name at the call site.
+#[allow(clippy::struct_excessive_bools)]
 pub struct SessionEngineConfig {
     pub cwd: PathBuf,
     pub agent_dir: PathBuf,
@@ -45,6 +47,10 @@ pub struct SessionEngineConfig {
     pub conversation_log_path: Option<PathBuf>,
     pub additional_skill_paths: Vec<String>,
     pub additional_prompt_paths: Vec<String>,
+    /// `--no-skills`: skip skill discovery (explicit skill paths still load).
+    pub no_skills: bool,
+    /// `--no-context-files`: skip AGENTS.md/CLAUDE.md discovery.
+    pub no_context_files: bool,
     pub extra_builtin_skill_overrides: Vec<String>,
     pub rlm_subagent_host: Option<Arc<dyn super::rlm_host::RlmSubagentHost>>,
     pub rlm_usage_store: Option<Arc<dyn super::rlm_usage::RlmChildUsageStore>>,
@@ -302,9 +308,9 @@ pub async fn create_session(mut config: SessionEngineConfig) -> anyhow::Result<S
         extra_builtin_skill_overrides,
         additional_skill_paths: config.additional_skill_paths.clone(),
         additional_prompt_paths: config.additional_prompt_paths.clone(),
-        no_skills: false,
+        no_skills: config.no_skills,
         no_prompt_templates: false,
-        no_context_files: false,
+        no_context_files: config.no_context_files,
         system_prompt: config.custom_system_prompt.clone(),
         append_system_prompt: config.prompt_guidelines.clone(),
         ..Default::default()

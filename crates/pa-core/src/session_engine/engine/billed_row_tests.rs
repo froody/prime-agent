@@ -54,6 +54,8 @@ async fn scripted_engine(
         conversation_log_path: None,
         additional_skill_paths: vec![],
         additional_prompt_paths: vec![],
+        no_skills: false,
+        no_context_files: false,
         extra_builtin_skill_overrides: vec![],
         rlm_subagent_host: None,
         rlm_usage_store: None,

@@ -162,6 +162,8 @@ pub(crate) async fn build_faux_engine_with(
             conversation_log_path: None,
             additional_skill_paths: vec![],
             additional_prompt_paths: vec![],
+            no_skills: config.no_skills,
+            no_context_files: config.no_context_files,
             extra_builtin_skill_overrides: vec![],
             rlm_subagent_host,
             rlm_usage_store: None,
