@@ -57,6 +57,21 @@ impl SettingsManager {
         self.save_global_scope(&["longCacheRetention"])
     }
 
+    /// Whether an idle session pings its prompt cache once to keep it for an hour (default on).
+    #[must_use]
+    pub fn get_prompt_cache_keepalive(&self) -> bool {
+        self.settings().prompt_cache_keepalive.unwrap_or(true)
+    }
+
+    /// Persist the prompt-cache keepalive preference to the global settings scope.
+    ///
+    /// # Errors
+    /// Returns an error when the global scope cannot be saved.
+    pub fn set_prompt_cache_keepalive(&mut self, enabled: bool) -> Result<()> {
+        self.global_mut().prompt_cache_keepalive = Some(enabled);
+        self.save_global_scope(&["promptCacheKeepalive"])
+    }
+
     /// The percentage ceiling for automatic compaction (default 95%).
     #[must_use]
     pub fn get_compaction_threshold_percent(&self) -> f64 {

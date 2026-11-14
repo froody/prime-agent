@@ -228,6 +228,18 @@ fn long_cache_retention_persists_without_clobbering_other_settings() {
 }
 
 #[test]
+fn prompt_cache_keepalive_defaults_on_and_persists_without_clobbering_other_settings() {
+    let (storage, mut manager) = fixture(r#"{"theme":"light","future":{"keep":true}}"#);
+    assert!(manager.get_prompt_cache_keepalive());
+    manager.set_prompt_cache_keepalive(false).unwrap();
+    assert!(!manager.reopen().get_prompt_cache_keepalive());
+    assert_eq!(
+        document(storage.as_ref()),
+        json!({"theme":"light", "future":{"keep":true}, "promptCacheKeepalive":false})
+    );
+}
+
+#[test]
 fn harness_refinements_ignore_project_overrides_and_resolve_global_wrong_types() {
     let dir = tempfile::tempdir().unwrap();
     let agent_dir = dir.path().join("agent");

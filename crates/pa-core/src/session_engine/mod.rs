@@ -8,6 +8,7 @@ pub mod auto_retry;
 pub mod auxiliary_model;
 pub mod bash_notices;
 pub mod branch_summarization;
+pub mod cache_keepalive;
 mod cache_retention;
 pub mod compact_session;
 pub mod compaction;

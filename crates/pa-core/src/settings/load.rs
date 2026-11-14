@@ -28,6 +28,7 @@ const KNOWN_FIELDS: &[&str] = &[
     "autoRefine",
     "harnessRefinements",
     "longCacheRetention",
+    "promptCacheKeepalive",
     "agentTraces",
     "factory",
     "telemetry",

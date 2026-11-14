@@ -270,6 +270,7 @@ pub async fn create_session(mut config: SessionEngineConfig) -> anyhow::Result<S
 
     let refinement_settings = settings.reopen();
     let cache_retention_settings = settings.reopen();
+    let keepalive_settings = settings.reopen();
     let service_tier_preference = settings.get_default_service_tier();
     // Captured before `settings` moves into the resource loader: the
     // compaction budget and the auto-refine gates.
@@ -345,6 +346,7 @@ pub async fn create_session(mut config: SessionEngineConfig) -> anyhow::Result<S
     let model_context_window = model.context_window;
 
     let session_id = wiring.session.lock().await.get_session_id().to_string();
+    let session_id_for_keepalive = session_id.clone();
     let mut handlers = wiring.handlers.clone();
     if let Some(extra) = config.extra_host_handlers.clone() {
         handlers.merge(extra);
@@ -731,6 +733,23 @@ pub async fn create_session(mut config: SessionEngineConfig) -> anyhow::Result<S
     // over the timing-instrumented fn (TS `sdk.ts` instruments first, the
     // `AgentSession` constructor wraps semantic edges over it). The side
     // question keeps the pre-semantic fn, so its calls carry no id.
+    // The keepalive wraps the provider fn under the timing instrument: its
+    // pings re-send a finished request, so they skip the loop's per-request
+    // timing and semantic-edge ids, and bill as `model_usage` rows.
+    let keepalive_store = wiring.rlm_usage.store();
+    let stream_fn = super::cache_keepalive::wrap_stream_fn(
+        std::sync::Arc::new(move || keepalive_settings.reopen().get_prompt_cache_keepalive()),
+        std::sync::Arc::new(move |usage| {
+            let store = std::sync::Arc::clone(&keepalive_store);
+            let session_id = session_id_for_keepalive.clone();
+            tokio::spawn(async move {
+                if let Err(error) = store.append_model_usage(session_id, usage).await {
+                    tracing::warn!(%error, "prompt cache keepalive bill not persisted");
+                }
+            });
+        }),
+        stream_fn,
+    );
     let timing_stream_fn = super::request_timing::instrument_stream_fn(
         std::sync::Arc::clone(&request_timing_wiring),
         super::cache_retention::wrap_stream_fn(cache_retention_settings, stream_fn),

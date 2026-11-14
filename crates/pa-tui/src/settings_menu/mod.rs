@@ -315,6 +315,14 @@ pub fn settings_menu_rows(current: &SettingsCurrentValues) -> Vec<SettingsMenuRo
             submenu: None,
         },
         SettingsMenuRow {
+            id: "prompt-cache-keepalive",
+            label: "Prompt cache keepalive",
+            description: "When a session goes idle, ping the prompt cache once so it stays for an hour; the ping costs a cache read",
+            current: current.prompt_cache_keepalive.to_string(),
+            values: Some(bool_value()),
+            submenu: None,
+        },
+        SettingsMenuRow {
             id: "mermaid-rendering",
             label: "Mermaid diagrams",
             description: "Render Mermaid code blocks as Unicode diagrams",
@@ -383,6 +391,7 @@ pub struct SettingsCurrentValues {
     pub harness_refinements: bool,
     pub web_search_provider: String,
     pub long_cache_retention: bool,
+    pub prompt_cache_keepalive: bool,
     pub hardware_cursor: bool,
     pub emoji_shortcodes: bool,
     pub editor_padding: u64,

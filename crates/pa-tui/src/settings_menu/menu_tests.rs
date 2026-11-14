@@ -62,7 +62,8 @@ fn tabs_partition_the_settings_rows() {
                     "thinking",
                     "transport",
                     "default-service-tier",
-                    "long-cache-retention"
+                    "long-cache-retention",
+                    "prompt-cache-keepalive"
                 ]
             ),
             (

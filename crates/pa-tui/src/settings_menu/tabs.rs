@@ -33,6 +33,7 @@ const TAB_LAYOUT: &[TabLayout] = &[
             "transport",
             "default-service-tier",
             "long-cache-retention",
+            "prompt-cache-keepalive",
         ],
     },
     TabLayout {

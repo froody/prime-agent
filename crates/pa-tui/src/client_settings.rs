@@ -43,6 +43,18 @@ pub trait ClientSettings: Send + Sync {
         anyhow::bail!("Cache retention settings are unavailable")
     }
 
+    /// One long-retention prompt-cache ping when a session goes idle, on by default.
+    fn prompt_cache_keepalive(&self) -> bool {
+        true
+    }
+    /// Persist the prompt-cache keepalive preference.
+    ///
+    /// # Errors
+    /// Returns an error if the settings store fails or is unavailable.
+    fn set_prompt_cache_keepalive(&self, _enabled: bool) -> Result<()> {
+        anyhow::bail!("Prompt cache keepalive settings are unavailable")
+    }
+
     /// Automatic compaction percentage ceiling; output headroom may trigger earlier.
     fn compaction_threshold_percent(&self) -> f64;
     /// Persist the percentage globally.

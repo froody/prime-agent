@@ -1279,6 +1279,12 @@ const LONG_CACHE_RETENTION_CHANGED: EventRule = EventRule {
     properties: &[("enabled", required(boolean()))],
 };
 
+const PROMPT_CACHE_KEEPALIVE_CHANGED: EventRule = EventRule {
+    name: "prompt cache keepalive changed",
+    since: 2,
+    properties: &[("enabled", required(boolean()))],
+};
+
 /// Every catalogued event, flattened.
 #[must_use]
 pub fn catalog() -> Vec<&'static EventRule> {
@@ -1286,6 +1292,7 @@ pub fn catalog() -> Vec<&'static EventRule> {
         &HARNESS_REFINEMENTS_CHANGED,
         &WEB_SEARCH_PROVIDER_CHANGED,
         &LONG_CACHE_RETENTION_CHANGED,
+        &PROMPT_CACHE_KEEPALIVE_CHANGED,
         &AGENT_STARTED,
         &AGENT_RUN_COMPLETED,
         &AGENT_SESSION_ENDED,

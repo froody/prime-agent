@@ -330,6 +330,8 @@ pub struct Settings {
     pub harness_refinements: Option<bool>,
     /// Rust-only `longCacheRetention`: request long prompt-cache retention; unset is off.
     pub long_cache_retention: Option<bool>,
+    /// Rust-only `promptCacheKeepalive`: an idle session's one 1h-retention cache ping; unset is on.
+    pub prompt_cache_keepalive: Option<bool>,
     pub agent_traces: Option<AgentTracesSettings>,
     pub factory: Option<FactorySettings>,
     pub telemetry: Option<TelemetrySettings>,

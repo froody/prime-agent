@@ -234,6 +234,7 @@ impl SessionUi {
             values.harness_refinements = settings.harness_refinements();
             values.web_search_provider = settings.web_search_provider();
             values.long_cache_retention = settings.long_cache_retention();
+            values.prompt_cache_keepalive = settings.prompt_cache_keepalive();
             values.hardware_cursor = settings.show_hardware_cursor();
             values.emoji_shortcodes = settings.emoji_shortcodes();
             values.editor_padding = settings.editor_padding_x();
@@ -256,6 +257,7 @@ impl SessionUi {
             values.harness_refinements = true;
             values.emoji_shortcodes = true;
             values.web_search_provider = "serper".to_string();
+            values.prompt_cache_keepalive = true;
             values.idle_eviction_minutes = "90".to_string();
             values.mermaid = "streaming".to_string();
             values.tree_filter_mode = "user-only".to_string();
@@ -387,6 +389,13 @@ impl SessionUi {
             "long-cache-retention" => {
                 self.persist_bool_setting(
                     |settings, enabled| settings.set_long_cache_retention(enabled),
+                    value,
+                    view,
+                );
+            }
+            "prompt-cache-keepalive" => {
+                self.persist_bool_setting(
+                    |settings, enabled| settings.set_prompt_cache_keepalive(enabled),
                     value,
                     view,
                 );
