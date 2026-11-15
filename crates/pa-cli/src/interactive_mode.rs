@@ -429,7 +429,7 @@ fn build_tui_options(
     // never the source — through the create `sessionPath`.
     let mut session = match &options.session.fork {
         Some(selector) => fork_startup_selection(selector, &config.cwd, session_dir.as_deref())?,
-        None => session_selection(&options.session, session_dir.as_deref()),
+        None => session_selection(&options.session, config, session_dir.as_deref()),
     };
     // A plain resume follows the saved project. Resolve its file before
     // changing cwd, and use the same project for client settings and the
@@ -555,12 +555,33 @@ fn build_tui_options(
 /// selector, then a fresh session (`--continue` goes through the agents view).
 fn session_selection(
     session: &crate::mode::SessionOptions,
+    runtime: &crate::mode::RuntimeConfig,
     session_dir: Option<&Path>,
 ) -> SessionSelection {
     if let Some(selector) = &session.resume {
         let default_dir = config::get_agent_dir().join("sessions");
         let dir = session_dir.unwrap_or(&default_dir);
         return resolve_resume_selector(selector, dir);
+    }
+    if session.session_id.is_some()
+        || runtime.system_prompt.is_some()
+        || !runtime.append_system_prompt.is_empty()
+        || !runtime.skills.is_empty()
+        || runtime.no_skills
+        || runtime.no_context_files
+    {
+        return SessionSelection::NewWithSeed(pa_tui::interactive::SessionCreateSeed {
+            session_id: session.session_id.clone(),
+            system_prompt: runtime.system_prompt.clone(),
+            append_system_prompt: runtime.append_system_prompt.clone(),
+            skills: runtime
+                .skills
+                .iter()
+                .map(|path| path.to_string_lossy().to_string())
+                .collect(),
+            no_skills: runtime.no_skills,
+            no_context_files: runtime.no_context_files,
+        });
     }
     SessionSelection::New
 }

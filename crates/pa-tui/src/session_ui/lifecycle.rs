@@ -30,7 +30,9 @@ impl SessionUi {
         page_notes: mpsc::UnboundedSender<TranscriptPageNote>,
     ) -> Result<SessionUi> {
         let active_session_id = match &options.session {
-            SessionSelection::New => create_session(&client, options, None).await?,
+            SessionSelection::New | SessionSelection::NewWithSeed(_) => {
+                create_session(&client, options, None).await?
+            }
             SessionSelection::NewChild { rlm_depth, .. } => {
                 let id = create_session(&client, options, None).await?;
                 // `tui agents new scoped`, fire-and-forget (the

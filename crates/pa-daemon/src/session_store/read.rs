@@ -308,10 +308,22 @@ impl SessionFile {
     }
 
     /// Create a new in-memory session; persisted with the first flush.
+    #[must_use]
     pub fn create(cwd: &str, parent_session: Option<&str>, rlm_depth: u32) -> Self {
+        Self::create_with_id(cwd, parent_session, rlm_depth, new_session_id())
+    }
+
+    /// Create a new in-memory session with an explicit session id.
+    #[must_use]
+    pub fn create_with_id(
+        cwd: &str,
+        parent_session: Option<&str>,
+        rlm_depth: u32,
+        id: String,
+    ) -> Self {
         let header = SessionHeader {
             version: Some(CURRENT_SESSION_VERSION),
-            id: new_session_id(),
+            id,
             timestamp: crate::util::now_iso(),
             cwd: cwd.to_string(),
             parent_session: parent_session.map(str::to_string),

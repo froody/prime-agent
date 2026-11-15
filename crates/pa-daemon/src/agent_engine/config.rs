@@ -85,6 +85,8 @@ pub(crate) struct CreateSessionResources {
     pub(crate) system_prompt: Option<String>,
     pub(crate) append_system_prompt: Vec<String>,
     pub(crate) skills: Vec<String>,
+    pub(crate) no_skills: bool,
+    pub(crate) no_context_files: bool,
     pub(crate) prompt_templates: Vec<String>,
     pub(crate) autonomous: Option<pa_core::autonomous::AgentAutonomousConfig>,
     /// The creating client's mode (`interactive`, `acp`, ...) for the

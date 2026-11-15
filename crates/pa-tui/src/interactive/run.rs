@@ -295,7 +295,9 @@ async fn run_interactive_surface(
     let opening_paints = !headless
         && matches!(
             &options.session,
-            SessionSelection::New | SessionSelection::NewChild { .. }
+            SessionSelection::New
+                | SessionSelection::NewWithSeed(_)
+                | SessionSelection::NewChild { .. }
         );
     if opening_paints {
         if let Some(renderer) = renderer.is_terminal_mut() {
@@ -433,7 +435,9 @@ async fn run_interactive_surface(
     // protect).
     let mut echoing = matches!(
         &options.session,
-        SessionSelection::New | SessionSelection::NewChild { .. }
+        SessionSelection::New
+            | SessionSelection::NewWithSeed(_)
+            | SessionSelection::NewChild { .. }
     );
     let mut ui_input_closed = false;
     let mut last_render_at: Option<Instant> = None;

@@ -60,10 +60,23 @@ use tokio::sync::mpsc;
 #[cfg(test)]
 pub(crate) mod tests;
 
+/// Startup create resources and optional explicit session id for CLI-driven
+/// interactive launches.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct SessionCreateSeed {
+    pub session_id: Option<String>,
+    pub system_prompt: Option<String>,
+    pub append_system_prompt: Vec<String>,
+    pub skills: Vec<String>,
+    pub no_skills: bool,
+    pub no_context_files: bool,
+}
+
 /// Which session the interactive run opens.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SessionSelection {
     New,
+    NewWithSeed(SessionCreateSeed),
     /// Create a fresh session bound under a parent session (the scoped
     /// agents view's new action): the create records `parent_session_file`
     /// as the session's `parentSessionPath` and runs it at `rlm_depth`
@@ -457,6 +470,26 @@ impl InteractiveOptions {
         // `telemetryDisabled` rides the runtime config: a resume's create reads it back.
         if self.telemetry_disabled == Some(true) {
             config["telemetryDisabled"] = json!(true);
+        }
+        if let SessionSelection::NewWithSeed(seed) = &self.session {
+            if let Some(session_id) = &seed.session_id {
+                config["sessionId"] = json!(session_id);
+            }
+            if let Some(system_prompt) = &seed.system_prompt {
+                config["systemPrompt"] = json!(system_prompt);
+            }
+            if !seed.append_system_prompt.is_empty() {
+                config["appendSystemPrompt"] = json!(seed.append_system_prompt);
+            }
+            if !seed.skills.is_empty() {
+                config["skills"] = json!(seed.skills);
+            }
+            if seed.no_skills {
+                config["noSkills"] = json!(true);
+            }
+            if seed.no_context_files {
+                config["noContextFiles"] = json!(true);
+            }
         }
         if let SessionSelection::NewChild {
             parent_session_file,

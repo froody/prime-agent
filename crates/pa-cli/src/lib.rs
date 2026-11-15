@@ -308,6 +308,7 @@ fn main_impl(args: &[String], runtime: &dyn mode::Runtime) -> Result<i32, String
             fork: parsed.fork.clone(),
             no_session: parsed.no_session,
             session_dir,
+            session_id: parsed.session_id.clone(),
             cwd_from_flag: parsed.cwd.is_some(),
         },
         messages: cli_messages,

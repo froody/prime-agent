@@ -4,7 +4,7 @@
 use std::collections::HashSet;
 
 /// Global flags that consume the next argument as their value.
-pub const GLOBAL_VALUE_FLAGS: [&str; 22] = [
+pub const GLOBAL_VALUE_FLAGS: [&str; 23] = [
     "--mode",
     "--daemon-socket",
     "--provider",
@@ -15,6 +15,7 @@ pub const GLOBAL_VALUE_FLAGS: [&str; 22] = [
     "--append-system-prompt",
     "--fork",
     "--session-dir",
+    "--session-id",
     "--models",
     "--thinking",
     "--skill",
@@ -37,9 +38,10 @@ pub const PROMPT_RUN_FLAGS: [&str; 4] =
     ["--print", "-p", "--system-prompt", "--append-system-prompt"];
 
 /// parseArgs-known long flags that take no separate value.
-const GLOBAL_BOOLEAN_FLAGS: [&str; 11] = [
+const GLOBAL_BOOLEAN_FLAGS: [&str; 12] = [
     "--help",
     "--version",
+    "--acp",
     "--continue",
     "--no-session",
     "--no-skills",

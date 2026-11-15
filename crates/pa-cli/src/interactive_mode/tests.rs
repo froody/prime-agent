@@ -10,31 +10,41 @@ use serde_json::Map;
 #[test]
 fn session_flags_map_to_selections() {
     let mut session = crate::mode::SessionOptions::default();
+    let runtime = crate::mode::RuntimeConfig::default();
     let dir = tempfile::TempDir::new().expect("temp dir");
     let session_dir = dir.path().join("sessions");
     std::fs::create_dir_all(&session_dir).expect("sessions dir");
     assert_eq!(
-        session_selection(&session, Some(session_dir.as_path())),
+        session_selection(&session, &runtime, Some(session_dir.as_path())),
         SessionSelection::New
     );
+    session.session_id = Some("abc-123".to_string());
+    assert_eq!(
+        session_selection(&session, &runtime, Some(session_dir.as_path())),
+        SessionSelection::NewWithSeed(pa_tui::interactive::SessionCreateSeed {
+            session_id: Some("abc-123".to_string()),
+            ..Default::default()
+        })
+    );
+    session.session_id = None;
     // `--continue` never maps to a resume: the candidate resolves through the
     // agents view or falls through to a fresh session.
     session.continue_recent = true;
     assert_eq!(
-        session_selection(&session, Some(session_dir.as_path())),
+        session_selection(&session, &runtime, Some(session_dir.as_path())),
         SessionSelection::New
     );
     session.continue_recent = false;
     session.resume = Some("a1b2c3".to_string());
     assert_eq!(
-        session_selection(&session, Some(session_dir.as_path())),
+        session_selection(&session, &runtime, Some(session_dir.as_path())),
         SessionSelection::Attach("a1b2c3".to_string())
     );
     let saved = session_dir.join("deadbeefcafe.jsonl");
     std::fs::write(&saved, "{}\n").expect("write file");
     session.resume = Some("deadbeefcafe".to_string());
     assert_eq!(
-        session_selection(&session, Some(session_dir.as_path())),
+        session_selection(&session, &runtime, Some(session_dir.as_path())),
         SessionSelection::Resume(saved)
     );
 
@@ -42,7 +52,7 @@ fn session_flags_map_to_selections() {
     std::fs::write(&file, "{}\n").expect("write file");
     session.resume = Some(file.to_string_lossy().to_string());
     assert_eq!(
-        session_selection(&session, Some(session_dir.as_path())),
+        session_selection(&session, &runtime, Some(session_dir.as_path())),
         SessionSelection::Resume(file)
     );
 }

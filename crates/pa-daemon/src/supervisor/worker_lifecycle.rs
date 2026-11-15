@@ -283,9 +283,12 @@ impl Supervisor {
             // respawned child keeps its provenance (its ledger
             // re-registers idempotently either way).
             "spawnedByRequestId",
+            "sessionId",
             "systemPrompt",
             "appendSystemPrompt",
             "skills",
+            "noSkills",
+            "noContextFiles",
             "promptTemplates",
             "autonomous",
             "executionMode",

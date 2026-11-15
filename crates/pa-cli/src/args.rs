@@ -149,6 +149,7 @@ pub struct Args {
     pub no_session: bool,
     pub fork: Option<String>,
     pub session_dir: Option<String>,
+    pub session_id: Option<String>,
     pub models: Option<Vec<String>>,
     pub print: bool,
     pub export: Option<String>,
@@ -257,6 +258,7 @@ pub fn parse_args(args: &[String]) -> Args {
         match arg {
             "--help" | "-h" => result.help = true,
             "--version" | "-v" => result.version = true,
+            "--acp" => result.mode = Some(Mode::Acp),
             "--mode" => {
                 let mode = require_value!(arg);
                 if let Some(mode) = Mode::parse(&mode) {
@@ -296,6 +298,21 @@ pub fn parse_args(args: &[String]) -> Args {
             "--no-session" => result.no_session = true,
             "--fork" => result.fork = Some(require_value!(arg)),
             "--session-dir" => result.session_dir = Some(require_value!(arg)),
+            "--session-id" => {
+                let value = require_value!(arg);
+                if value.is_empty()
+                    || value.contains('/')
+                    || value.contains('\\')
+                    || value.contains("..")
+                    || value.contains('\0')
+                {
+                    result.diagnostics.push(Diagnostic::error(format!(
+                        "Invalid --session-id \"{value}\""
+                    )));
+                } else {
+                    result.session_id = Some(value);
+                }
+            }
             "--models" => {
                 let value = require_value!(arg);
                 result.models = Some(

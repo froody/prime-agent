@@ -103,6 +103,7 @@ pub struct SessionOptions {
     pub fork: Option<String>,
     pub no_session: bool,
     pub session_dir: Option<PathBuf>,
+    pub session_id: Option<String>,
     /// True when `--cwd` selected the working directory; resumed
     /// sessions then use that directory instead of the header cwd.
     pub cwd_from_flag: bool,

@@ -45,6 +45,24 @@ impl Worker {
             .get("noSession")
             .and_then(Value::as_bool)
             .unwrap_or(false);
+        let requested_session_id = match payload.get("sessionId").and_then(Value::as_str) {
+            Some(id)
+                if id.is_empty()
+                    || id.contains('/')
+                    || id.contains('\\')
+                    || id.contains("..")
+                    || id.contains('\0') =>
+            {
+                return response_failure(
+                    None,
+                    "create",
+                    &format!("Invalid sessionId \"{id}\""),
+                    None,
+                );
+            }
+            Some(id) => Some(id.to_string()),
+            None => None,
+        };
         let name = payload.get("name").and_then(Value::as_str);
         let flagged_model = payload.get("model").and_then(Value::as_str).is_some();
         // A revived session restores the model its file pins before the startup
@@ -341,21 +359,45 @@ impl Worker {
             }
             // In-memory session: no file, like the TS `noSession` create.
             (None, true) => {
-                let created = SessionFile::create(
-                    &cwd,
-                    parent_session_path.as_deref(),
-                    rlm_depth.unwrap_or(0),
-                );
+                let created = match requested_session_id.clone() {
+                    Some(id) => SessionFile::create_with_id(
+                        &cwd,
+                        parent_session_path.as_deref(),
+                        rlm_depth.unwrap_or(0),
+                        id,
+                    ),
+                    None => SessionFile::create(
+                        &cwd,
+                        parent_session_path.as_deref(),
+                        rlm_depth.unwrap_or(0),
+                    ),
+                };
                 fresh_prefix = FreshPrefixPlan::InMemory;
                 created
             }
             (None, false) => {
-                let mut created = SessionFile::create(
-                    &cwd,
-                    parent_session_path.as_deref(),
-                    rlm_depth.unwrap_or(0),
-                );
+                let mut created = match requested_session_id {
+                    Some(id) => SessionFile::create_with_id(
+                        &cwd,
+                        parent_session_path.as_deref(),
+                        rlm_depth.unwrap_or(0),
+                        id,
+                    ),
+                    None => SessionFile::create(
+                        &cwd,
+                        parent_session_path.as_deref(),
+                        rlm_depth.unwrap_or(0),
+                    ),
+                };
                 let path = session_dir.join(session_file_name(created.session_id()));
+                if path.exists() {
+                    return response_failure(
+                        None,
+                        "create",
+                        &format!("Session \"{}\" already exists", created.session_id()),
+                        None,
+                    );
+                }
                 created.set_path(path.clone());
                 created.trace_upload = traces(&created.path);
                 let acquired = {
