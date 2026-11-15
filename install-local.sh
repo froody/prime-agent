@@ -147,11 +147,11 @@ commit: $(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null || echo "unknown")
 MARKER
 
 # Atomic replacement
+BACKUP_SHARE=""
 if [ -d "$SHARE_DIR" ]; then
   BACKUP_SHARE="${SHARE_DIR}.old.$$"
   mv "$SHARE_DIR" "$BACKUP_SHARE"
   mv "$TEMP_SHARE" "$SHARE_DIR"
-  rm -rf "$BACKUP_SHARE" 2>/dev/null || true
 else
   mv "$TEMP_SHARE" "$SHARE_DIR"
 fi
@@ -175,6 +175,74 @@ success "Launcher created at ${BIN_DIR}/${BIN_NAME}"
 if [ "$BIN_NAME" != "prime-agent" ]; then
   ln -sf "${BIN_NAME}" "${BIN_DIR}/prime-agent"
   success "Linked ${BIN_DIR}/prime-agent -> ${BIN_NAME}"
+fi
+
+# Stop any daemon still running from the previous payload before deleting BACKUP_SHARE,
+# otherwise its /proc/<pid>/exe points to a deleted binary and worker spawns fail with ENOENT.
+DAEMON_SOCKET="${PRIME_AGENT_DAEMON_SOCKET:-${TMPDIR:-/tmp}/prime-agent-rust-$(id -u)/daemon.sock}"
+if [ -S "$DAEMON_SOCKET" ]; then
+  if python3 - "$DAEMON_SOCKET" << 'PYEOF' >/dev/null 2>&1
+import json, socket, sys, time
+
+path = sys.argv[1]
+
+def is_listening():
+    try:
+        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        s.settimeout(0.25)
+        s.connect(path)
+        s.close()
+        return True
+    except OSError:
+        return False
+
+def wait_stopped(timeout_s):
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        if not is_listening():
+            return True
+        time.sleep(0.05)
+    return not is_listening()
+
+def send_shutdown(force):
+    req_id = "install-local-shutdown-force" if force else "install-local-shutdown"
+    try:
+        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        s.settimeout(2.0)
+        s.connect(path)
+        f = s.makefile("r", encoding="utf-8", errors="replace")
+        hello_line = f.readline()
+        if not hello_line:
+            s.close()
+            return
+        msg = {
+            "type": "command",
+            "id": req_id,
+            "protocol": {"name": "prime-agent.daemon", "version": 7},
+            "clientId": "install-local-sh",
+            "command": {"type": "shutdown", "id": req_id, "force": force},
+        }
+        s.sendall((json.dumps(msg) + "\n").encode("utf-8"))
+        f.readline()
+        s.close()
+    except OSError:
+        pass
+
+if not is_listening():
+    sys.exit(1)
+
+send_shutdown(False)
+if not wait_stopped(5.0):
+    send_shutdown(True)
+    wait_stopped(15.0)
+PYEOF
+  then
+    success "Stopped previous background daemon on ${DAEMON_SOCKET}"
+  fi
+fi
+
+if [ -n "$BACKUP_SHARE" ] && [ -d "$BACKUP_SHARE" ]; then
+  rm -rf "$BACKUP_SHARE" 2>/dev/null || true
 fi
 
 # 7. Pre-warm kernel
