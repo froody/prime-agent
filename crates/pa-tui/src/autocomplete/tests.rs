@@ -996,7 +996,6 @@ fn file_rows_show_their_path_inline() {
     let state = AutocompleteState::new(
         vec![file_item("tool"), file_item("lib/src/tool")],
         5,
-        "@t".to_string(),
         Some(SuggestionKind::File),
     );
     let rendered: Vec<String> = state

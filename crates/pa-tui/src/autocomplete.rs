@@ -401,11 +401,7 @@ impl AutocompleteState {
         let end = (start + self.max_visible).min(self.items.len());
         // TS `createAutocompleteList`: only slash commands use the
         // metadata layout with the selected-description block.
-        let slash_layout = match self.kind {
-            Some(SuggestionKind::SlashCommand) => true,
-            Some(SuggestionKind::File) => false,
-            None => self.prefix.starts_with('/'),
-        };
+        let slash_layout = matches!(self.kind, Some(SuggestionKind::SlashCommand));
         let mut lines: Vec<Line> = Vec::new();
         for (index, item) in self.items[start..end].iter().enumerate() {
             let index = start + index;
